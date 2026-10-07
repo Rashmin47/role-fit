@@ -1,192 +1,91 @@
-# Nirman — Evidence-Based Career & Hiring Intelligence
+# Role Fit
 
-Nirman is an evidence-based **Career & Hiring Intelligence** platform built with Next.js App Router, TypeScript, Tailwind CSS, Prisma, and deterministic scoring algorithms.
+> Understand the role. Measure the fit. Make better decisions.
 
-The product is **NOT** a chatbot, **NOT** a resume builder, and **NOT** a black-box AI assistant.
+**Role Fit** is an evidence-based career and recruitment intelligence platform that connects **what employers require** with **what candidates actually demonstrate**.
 
----
+It analyzes job descriptions and candidate profiles, extracts structured requirements and evidence, normalizes skills and experience, and uses deterministic matching to produce transparent, explainable role-fit insights.
 
-## 🏛 Core Architectural Principle
+Role Fit is designed around a simple principle:
 
-```
-REAL INPUT (Job Descriptions / Resumes)
-       ↓
-AI STRUCTURED EXTRACTION (Local Open-Weight / Offline Extractor)
-       ↓
-STRUCTURED DATA SCHEMAS
-       ↓
-CANONICAL NORMALIZATION (Skills, Titles, Dates)
-       ↓
-RETRIEVAL / MARKET EVIDENCE (Job Postings Repository)
-       ↓
-DETERMINISTIC MATCHING & SCORING (Mathematical Weighted Engine)
-       ↓
-DETERMINISTIC ROUTING (Strong Match / Review / Needs Verification)
-       ↓
-EXPLAINABLE RESULT (Citations & Requirement Matrix)
-       ↓
-HUMAN DECISION (Recruiter Shortlist / Hold / Not Recommended)
-```
-
-**Key Rule**: LLMs are never used to make final hiring decisions or calculate percentages. AI only structures and extracts data. Application logic deterministically computes all match scores and requirement alignments.
+> **AI understands. Role Fit measures. Humans decide.**
 
 ---
 
-## 🎯 Hackathon AI Architecture Mapping
+## Overview
 
-The platform demonstrates all 6 meaningful forms of AI usage defined by the organizer across one unified recruitment workflow:
+Finding the right fit between a role and a candidate is still heavily dependent on manual interpretation.
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ 01. STRUCTURED EXTRACTION                                                   │
-│ Location: /lib/ai/ (schemas.ts, mock-provider.ts, ollama-provider.ts)       │
-│ Function: Unstructured job descriptions and candidate resumes are parsed    │
-│           into strictly validated JSON schemas (StructuredJobRequirements,  │
-│           CandidateProfile) consumed downstream by application code.        │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ 02. DECISION / ROUTING LOGIC                                                │
-│ Location: /lib/routing/ (index.ts)                                          │
-│ Function: Application logic deterministically classifies candidate records  │
-│           into actionable recruiter queues (STRONG_MATCH, REVIEW,           │
-│           NEEDS_VERIFICATION) based on score, coverage, and evidence depth. │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ 03. TOOL / FUNCTION CALLING                                                 │
-│ Location: /lib/tools/ (index.ts)                                            │
-│ Function: Internal tool registry exposing deterministic utilities:          │
-│           normalize_skill(), calculate_experience(),                        │
-│           retrieve_market_requirements(), search_skill_taxonomy().          │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ 04. MULTI-STEP PIPELINE                                                     │
-│ Location: /lib/pipeline/ (index.ts)                                         │
-│ Function: Unstructured Input → AI Extraction → Canonical Normalization →    │
-│           RAG Grounding → Matching → Deterministic Scoring → Routing.       │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ 05. RAG / RETRIEVAL-GROUNDED REASONING                                      │
-│ Location: /lib/retrieval/ (index.ts)                                        │
-│ Function: Market requirements and candidate evaluations are grounded        │
-│           against retrieved structured job postings (JobPosting, Company). │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ 06. DATA TRANSFORMATION AT SCALE (BATCH PROCESSING)                         │
-│ Location: /lib/batch/ (index.ts)                                            │
-│ Function: Manages screening runs (ScreeningRun, CandidateProcessingJob)     │
-│           processing 10 to 200+ resumes independently and aggregating       │
-│           deterministic scores into an explainable shortlist.               │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+Candidates often struggle to understand:
+
+- Which skills actually matter for a target role
+- Which technologies employers repeatedly require
+- How much experience is expected
+- What gaps they need to address
+- Whether their current profile demonstrates the requirements
+
+Recruiters face the opposite problem:
+
+- Large volumes of resumes
+- Unstructured candidate information
+- Repetitive manual screening
+- Inconsistent interpretation of requirements
+- Difficulty explaining why one candidate appears stronger than another
+
+**Role Fit brings these two sides together through a shared, structured understanding of job requirements.**
 
 ---
 
-## 🚀 Quick Start
+# The Problem
 
-### 1. Installation
-```bash
-npm install
-```
+There is a persistent gap between:
 
-### 2. Database Sync
-```bash
-npx prisma generate
-npx prisma db push
-```
+**What the market requires**
 
-### 3. Run Automated Tests
-```bash
-npm test
-```
+and
 
-### 4. Start Development Server
-```bash
-npm run dev
-```
-Open [http://localhost:3000](http://localhost:3000) to view the application.
+**What candidates demonstrate.**
+
+Candidates frequently prepare using generic career advice rather than evidence from actual job requirements.
+
+Recruiters, meanwhile, may spend significant time manually extracting and comparing the same information across resumes.
+
+This creates three problems:
+
+1. **Candidates may prioritize the wrong skills.**
+2. **Recruiters spend valuable time on repetitive screening.**
+3. **Hiring decisions can become difficult to explain consistently.**
+
+Role Fit aims to make this process more structured, evidence-based, and transparent.
 
 ---
 
-## 📂 Project Structure
+# The Solution
 
-```
-/app
-  /(dashboard)
-    /dashboard            # Main dashboard overview
-    /career-intelligence  # Role intelligence & market demand
-      /[role]             # Dynamic role & skill gap view
-    /recruitment          # Screening workspace
-      /new                # 4-step structured extraction & screening workflow
-      /[jobId]            # Job screening candidate table & weight tuning
-        /candidate/[id]   # Candidate detail with requirement citations
-    /candidates           # Global candidate pool
-    /insights             # Observed company requirements
-    /settings             # AI provider & default scoring weights
-  /layout.tsx
-  /page.tsx               # Restrained B2B SaaS landing page
-  /globals.css
+Role Fit converts unstructured hiring information into structured evidence.
 
-/components
-  /layout
-    /AppShell.tsx         # Persistent 240px sidebar & header shell
-  /ui
-    /WorkflowStatus.tsx   # Reusable pipeline stage progress component
-    /Button.tsx, /Badge.tsx, /Card.tsx, /Input.tsx, /Progress.tsx
-  /recruitment
-    /CandidateTable.tsx   # Candidate table with sorting, filters, and status badges
-    /CandidateDetailView.tsx # Requirement comparison & citation inspector
-    /NewScreeningWorkflow.tsx # 4-step extraction, review, and screening pipeline
-  /career
-    /RoleSelector.tsx     # Role cards
-    /MarketRequirementsView.tsx # Distribution charts & gap analysis
+At a high level:
 
-/lib
-  /ai
-    /provider.ts          # AIProvider base interface & factory
-    /schemas.ts           # Strongly typed schemas & validator
-    /mock-provider.ts     # High-fidelity offline pattern extractor
-    /ollama-provider.ts   # Local Ollama open-weight integration
-    /prompts/             # Structured JSON prompts
-  /matching
-    /index.ts             # Deterministic CandidateMatch evaluator
-  /routing
-    /index.ts             # Deterministic queue classifier (STRONG_MATCH / REVIEW)
-  /tools
-    /index.ts             # Internal tool registry & deterministic handlers
-  /retrieval
-    /index.ts             # RAG retrieval module for job postings & market data
-  /batch
-    /index.ts             # Scalable batch processing queue architecture
-  /pipeline
-    /index.ts             # Multi-step coordinator
-  /scoring
-    /index.ts             # Deterministic scoring engine (Skills, Exp, Preferred, Evidence)
-  /normalization
-    /skills.ts            # Canonical taxonomy mapper & alias resolver
-  /data
-    /sample-data.ts       # Rich verified sample dataset
-  /store
-    /screening-store.ts   # Client/Server reactive state store
-  /tests
-    /engine.test.ts       # Automated unit test suite
-
-/prisma
-  /schema.prisma          # PostgreSQL / SQLite relational data schema
-  /seed.js                # Database initialization script
-```
-
----
-
-## 🤖 Zero Proprietary AI Lock-In
-
-Nirman uses zero proprietary cloud LLM APIs (no OpenAI, Anthropic, Gemini). It features an extensible `AIProvider` interface supporting:
-1. **Local Offline Pattern & Keyword Extractor**: Instant, 100% offline, zero latency.
-2. **Ollama Open-Weight Models**: Direct local HTTP integration with `llama3.2`, `mistral`, `gemma2`, or `qwen2.5`.
-
----
-
-## ⚖️ Deterministic Scoring Engine
-
-Scores are computed in [`lib/scoring/index.ts`](file:///Users/rashmin/Documents/nirmaan/lib/scoring/index.ts):
-
-* **Required Skills (50%)**: Exact match against required technical capabilities.
-* **Experience Duration (25%)**: Mathematical ratio of verified candidate years to minimum role years.
-* **Preferred Skills (15%)**: Bonus points for nice-to-have capabilities.
-* **Evidence Quality (10%)**: Verification of concrete project artifacts and documented timeline entries.
-
-Every evaluated claim is backed by a **cited excerpt** from the source document.
+```text
+Job Requirements
+       │
+       ▼
+AI Extraction
+       │
+       ▼
+Structured Requirements
+       │
+       ▼
+Normalization & Retrieval
+       │
+       ▼
+Candidate Evidence
+       │
+       ▼
+Deterministic Matching
+       │
+       ▼
+Explainable Fit Score
+       │
+       ▼
+Human Review
