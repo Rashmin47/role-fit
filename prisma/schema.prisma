@@ -1,0 +1,225 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     User[]
+  jobs      Job[]
+}
+
+model User {
+  id             String        @id @default(cuid())
+  name           String
+  email          String        @unique
+  role           String        @default("recruiter") // recruiter, hiring_manager, admin
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model Job {
+  id                     String           @id @default(cuid())
+  title                  String
+  department             String
+  location               String
+  status                 String           @default("active") // active, draft, archived
+  rawDescription         String
+  minimumExperienceYears Float            @default(0)
+  organizationId         String?
+  organization           Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  requirements           Requirement[]
+  candidateMatches       CandidateMatch[]
+  scoringRuns            ScoringRun[]
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+}
+
+model Requirement {
+  id                String   @id @default(cuid())
+  jobId             String
+  job               Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  name              String
+  type              String   // skill, experience, education, domain, certification
+  importance        String   @default("required") // required, preferred, bonus
+  weight            Float    @default(1.0)
+  minimumYears      Float?
+  description       String?
+  extractedEvidence String?
+  confidence        Float    @default(0.95)
+  createdAt         DateTime @default(now())
+}
+
+model Candidate {
+  id                     String           @id @default(cuid())
+  name                   String
+  email                  String?
+  phone                  String?
+  location               String?
+  headline               String?
+  totalExperienceYears   Float            @default(0)
+  rawResumeText          String?
+  extractedSkillsJson    String?          // JSON array of normalized skills
+  extractedWorkJson      String?          // JSON array of structured experience
+  extractedEducationJson String?          // JSON array of education
+  resumes                Resume[]
+  candidateSkills        CandidateSkill[]
+  candidateExperiences   CandidateExperience[]
+  candidateMatches       CandidateMatch[]
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+}
+
+model Resume {
+  id          String    @id @default(cuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  filename    String
+  fileSize    Int
+  mimeType    String
+  rawText     String
+  parsedAt    DateTime  @default(now())
+  createdAt   DateTime  @default(now())
+}
+
+model CandidateSkill {
+  id          String    @id @default(cuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  skillName   String
+  level       String?   // Basic, Working knowledge, Strong, Expert
+  years       Float?
+  evidence    String?
+  createdAt   DateTime  @default(now())
+}
+
+model CandidateExperience {
+  id          String    @id @default(cuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  company     String
+  title       String
+  startDate   String?
+  endDate     String?
+  years       Float     @default(0)
+  description String?
+  createdAt   DateTime  @default(now())
+}
+
+model CandidateMatch {
+  id                   String      @id @default(cuid())
+  jobId                String
+  job                  Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidateId          String
+  candidate            Candidate   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  scoringRunId         String?
+  scoringRun           ScoringRun? @relation(fields: [scoringRunId], references: [id], onDelete: SetNull)
+  totalScore           Float
+  skillScore           Float
+  experienceScore      Float
+  preferredScore       Float
+  evidenceScore        Float
+  status               String      @default("Review") // Strong Match, Review, Needs Verification
+  decision             String      @default("pending") // pending, shortlisted, held, not_recommended
+  matchesJson          String      // JSON array of MatchEvidence
+  gapsJson             String      // JSON array of SkillGap
+  weightsJson          String      // JSON of ScoringWeights
+  reviewedBy           String?
+  reviewNotes          String?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  @@unique([jobId, candidateId])
+}
+
+model ScoringRun {
+  id               String           @id @default(cuid())
+  jobId            String
+  job              Job              @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  executedAt       DateTime         @default(now())
+  candidatesCount  Int
+  status           String           @default("COMPLETED") // QUEUED, PROCESSING, COMPLETED, FAILED
+  weightsJson      String
+  candidateMatches CandidateMatch[]
+  processingJobs   CandidateProcessingJob[]
+}
+
+model CandidateProcessingJob {
+  id           String      @id @default(cuid())
+  scoringRunId String
+  scoringRun   ScoringRun  @relation(fields: [scoringRunId], references: [id], onDelete: Cascade)
+  candidateName String
+  status       String      @default("QUEUED") // QUEUED, PROCESSING, COMPLETED, FAILED
+  score        Float?
+  routingState String?
+  errorMessage String?
+  startedAt    DateTime?
+  completedAt  DateTime?
+}
+
+model Skill {
+  id        String       @id @default(cuid())
+  name      String       @unique
+  category  String       // language, framework, database, tool, cloud, methodology
+  aliases   SkillAlias[]
+  createdAt DateTime     @default(now())
+}
+
+model SkillAlias {
+  id        String   @id @default(cuid())
+  skillId   String
+  skill     Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  alias     String   @unique
+  createdAt DateTime @default(now())
+}
+
+model JobPosting {
+  id                     String           @id @default(cuid())
+  companyName            String
+  roleTitle              String
+  sourceName             String           // e.g. "Public Engineering Job Board"
+  observedDate           String
+  extractedSkillsJson    String           // JSON array of strings
+  minimumExperienceYears Float            @default(0)
+  descriptionExcerpt     String
+  evidenceSources        EvidenceSource[]
+  createdAt              DateTime         @default(now())
+}
+
+model EvidenceSource {
+  id           String      @id @default(cuid())
+  jobPostingId String
+  jobPosting   JobPosting  @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
+  url          String?
+  title        String
+  collectedAt  DateTime    @default(now())
+}
+
+model MarketRoleData {
+  id                     String   @id @default(cuid())
+  roleKey                String   @unique // python-backend-developer, frontend-developer, etc.
+  title                  String
+  totalPostingsAnalyzed  Int
+  requirementsJson       String   // JSON array of MarketRequirementStat
+  experienceJson         String   // JSON array of ExperienceDistribution
+  prioritiesJson         String   // JSON object with high, medium, emerging
+  lastUpdated            DateTime @default(now())
+}
+
+model Company {
+  id                    String   @id @default(cuid())
+  name                  String   @unique
+  industry              String
+  observedDataJson      String   // JSON array of ObservedCompanyRequirement
+  createdAt             DateTime @default(now())
+}
