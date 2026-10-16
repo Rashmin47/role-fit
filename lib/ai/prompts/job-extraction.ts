@@ -2,7 +2,7 @@
  * Structured prompts for local/open-weight LLMs (Ollama, Llama, Qwen, Mistral)
  */
 
-export const JOB_EXTRACTION_SYSTEM_PROMPT = `You are a strict data extraction engine for the Nirman hiring platform.
+export const JOB_EXTRACTION_SYSTEM_PROMPT = `You are a strict data extraction engine for the Role Fit hiring platform.
 Your task is to parse unstructured job descriptions into a valid JSON object matching the exact schema below.
 
 Rules:

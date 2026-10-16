@@ -1,7 +1,9 @@
-import { notFound } from "next/navigation";
 import { RoleSelector } from "@/components/career/RoleSelector";
 import { MarketRequirementsView } from "@/components/career/MarketRequirementsView";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { SAMPLE_CAREER_ROLES } from "@/lib/data/sample-data";
+import { Compass } from "lucide-react";
 
 export default function RoleDetailPage({ params }: { params: { role: string } }) {
   const roleData = SAMPLE_CAREER_ROLES[params.role];
@@ -9,10 +11,17 @@ export default function RoleDetailPage({ params }: { params: { role: string } })
   if (!roleData) {
     return (
       <div className="space-y-6">
-        <h1 className="text-xl font-bold text-nirman-dark">Role Not Found</h1>
-        <p className="text-xs text-nirman-text-secondary">
-          The requested role is not available in the sample dataset. Select another role:
-        </p>
+        <PageHeader
+          eyebrow="Career"
+          title="Role not found"
+          description="The requested role is not available in the sample dataset. Choose another role below."
+        />
+        <EmptyState
+          icon={Compass}
+          title="Unknown role"
+          description="Select one of the available roles to view its market requirements."
+          className="py-12"
+        />
         <RoleSelector />
       </div>
     );
@@ -20,25 +29,19 @@ export default function RoleDetailPage({ params }: { params: { role: string } })
 
   return (
     <div className="space-y-6">
-      {/* Top Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-nirman-dark">
-          Career Intelligence
-        </h1>
-        <p className="text-xs text-nirman-text-secondary mt-1">
-          Understand what employers are actually asking for across verified job market datasets.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Career"
+        title="Career Intelligence"
+        description="Understand what employers actually ask for across verified job market datasets."
+      />
 
-      {/* Role Selection Grid */}
       <div>
-        <label className="block text-xs font-semibold text-nirman-text-primary mb-2">
-          Select Target Engineering Role:
-        </label>
+        <p className="mb-2 block text-2xs font-semibold uppercase tracking-wide text-nirman-text-muted">
+          Select a target engineering role
+        </p>
         <RoleSelector activeRoleId={params.role} />
       </div>
 
-      {/* Role Intelligence View */}
       <MarketRequirementsView role={roleData} />
     </div>
   );

@@ -1,105 +1,114 @@
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Callout } from "@/components/ui/Callout";
 import { SAMPLE_COMPANIES } from "@/lib/data/sample-data";
-import { Building2, TrendingUp, Calendar, AlertCircle } from "lucide-react";
+import { Building2, Clock, TrendingUp } from "lucide-react";
 
 export default function CompanyIntelligencePage() {
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-nirman-dark">
-          Company Intelligence
-        </h1>
-        <p className="text-xs text-nirman-text-secondary mt-1">
-          Observed job requirements, tech stack trends, and experience distributions across organizations.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Market"
+        title="Company Intelligence"
+        description="Observed job requirements, tech stack trends, and experience distributions across organizations."
+      />
 
-      <div className="p-3 bg-nirman-bg border border-nirman-border rounded-md text-xs text-nirman-text-secondary flex items-center gap-2">
-        <AlertCircle className="h-4 w-4 text-nirman-text-muted shrink-0" />
-        <span>
-          Data reflects <strong>observed job requirements</strong> aggregated from published specifications, not verified internal headcount or hiring records.
-        </span>
-      </div>
+      <Callout tone="neutral">
+        Data reflects{" "}
+        <strong className="text-nirman-text-primary">
+          observed job requirements
+        </strong>{" "}
+        aggregated from published specifications — not verified internal headcount
+        or hiring records.
+      </Callout>
 
-      {/* Companies Grid */}
       <div className="space-y-6">
         {SAMPLE_COMPANIES.map((company, idx) => (
           <Card key={idx}>
-            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-2.5">
-                <div className="h-8 w-8 rounded bg-nirman-dark text-white flex items-center justify-center font-bold text-xs">
-                  <Building2 className="h-4 w-4" />
-                </div>
+            <CardHeader className="flex-col items-start gap-3 sm:flex-row sm:items-center">
+              <div className="flex items-center gap-3">
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-nirman-dark text-white">
+                  <Building2 className="h-4 w-4" aria-hidden />
+                </span>
                 <div>
                   <CardTitle>{company.companyName}</CardTitle>
-                  <span className="text-xs text-nirman-text-muted">
-                    {company.industry} • Target Domain: {company.targetRole}
+                  <span className="mt-0.5 block text-2xs text-nirman-text-muted">
+                    {company.industry} · Target domain: {company.targetRole}
                   </span>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 text-xs text-nirman-text-secondary font-mono">
-                <span>{company.rolesAnalyzedCount} specs analyzed</span>
-                <span>•</span>
-                <span>Observed: {company.lastObservedDate}</span>
+              <div className="flex items-center gap-3 font-mono text-2xs text-nirman-text-secondary">
+                <span className="inline-flex items-center gap-1">
+                  <TrendingUp className="h-3.5 w-3.5" aria-hidden />
+                  {company.rolesAnalyzedCount} specs
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <Clock className="h-3.5 w-3.5" aria-hidden />
+                  {company.lastObservedDate}
+                </span>
               </div>
             </CardHeader>
 
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Most Requested Skills */}
-                <div className="space-y-2">
-                  <span className="text-xs font-semibold text-nirman-dark block">
-                    Top Observed Skills:
-                  </span>
-                  <div className="space-y-2">
-                    {company.topRequestedSkills.map((sk, i) => (
-                      <div key={i} className="space-y-1">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-nirman-text-primary font-medium">{sk.name}</span>
-                          <span className="font-mono text-nirman-dark font-semibold">{sk.percentage}%</span>
-                        </div>
-                        <div className="h-1.5 w-full bg-nirman-border rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-nirman-accent"
-                            style={{ width: `${sk.percentage}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))}
+            <CardContent className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+              <div className="space-y-3">
+                <span className="text-2xs font-semibold uppercase tracking-wide text-nirman-text-muted">
+                  Top observed skills
+                </span>
+                {company.topRequestedSkills.map((sk) => (
+                  <div key={sk.name} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-medium text-nirman-text-primary">
+                        {sk.name}
+                      </span>
+                      <span className="tabular-nums font-mono text-xs font-semibold text-nirman-dark">
+                        {sk.percentage}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-nirman-border">
+                      <div
+                        className="h-full rounded-full bg-nirman-accent"
+                        style={{ width: `${sk.percentage}%` }}
+                      />
+                    </div>
                   </div>
-                </div>
+                ))}
+              </div>
 
-                {/* Experience Distribution */}
-                <div className="space-y-2">
-                  <span className="text-xs font-semibold text-nirman-dark block">
-                    Experience Level Requirements:
-                  </span>
-                  <div className="space-y-2">
-                    {company.experienceDistribution.map((exp, i) => (
-                      <div key={i} className="p-2.5 rounded bg-[#FAFAF8] border border-nirman-border flex items-center justify-between text-xs">
-                        <span className="font-medium text-nirman-dark">{exp.range}</span>
-                        <span className="font-mono font-semibold text-nirman-dark">{exp.percentage}%</span>
-                      </div>
-                    ))}
+              <div className="space-y-3">
+                <span className="text-2xs font-semibold uppercase tracking-wide text-nirman-text-muted">
+                  Experience level requirements
+                </span>
+                {company.experienceDistribution.map((exp) => (
+                  <div
+                    key={exp.range}
+                    className="flex items-center justify-between rounded-lg border border-nirman-border bg-[#FAFAF8] px-3 py-2.5 text-xs"
+                  >
+                    <span className="font-medium text-nirman-dark">
+                      {exp.range}
+                    </span>
+                    <span className="tabular-nums font-mono font-semibold text-nirman-dark">
+                      {exp.percentage}%
+                    </span>
                   </div>
-                </div>
+                ))}
+              </div>
 
-                {/* Recent Requirement Changes */}
-                <div className="space-y-2">
-                  <span className="text-xs font-semibold text-nirman-dark block">
-                    Recent Requirement Changes:
-                  </span>
-                  <div className="space-y-2">
-                    {company.recentRequirementChanges.map((change, i) => (
-                      <div key={i} className="p-2.5 rounded bg-[#FAFAF8] border border-nirman-border text-xs text-nirman-text-secondary leading-relaxed">
-                        • {change}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+              <div className="space-y-3">
+                <span className="text-2xs font-semibold uppercase tracking-wide text-nirman-text-muted">
+                  Recent requirement changes
+                </span>
+                <ul className="space-y-2">
+                  {company.recentRequirementChanges.map((change, i) => (
+                    <li
+                      key={i}
+                      className="flex gap-2 rounded-lg border border-nirman-border bg-[#FAFAF8] px-3 py-2.5 text-2xs leading-relaxed text-nirman-text-secondary"
+                    >
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-nirman-accent" />
+                      <span>{change}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             </CardContent>
           </Card>

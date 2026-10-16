@@ -3,261 +3,327 @@
 import * as React from "react";
 import Link from "next/link";
 import {
-  Briefcase,
-  Compass,
-  Users,
   ArrowRight,
-  CheckCircle2,
-  TrendingUp,
-  FileCheck2,
-  Plus,
+  Briefcase,
   ChevronRight,
   Clock,
-  Sparkles,
+  Compass,
+  Plus,
+  ShieldCheck,
+  Users,
 } from "lucide-react";
-import { Button } from "@/components/ui/Button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
-import { Badge, StatusBadge } from "@/components/ui/Badge";
+import { ButtonLink } from "@/components/ui/Button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { StatCard } from "@/components/ui/StatCard";
+import { ScoreMeter } from "@/components/ui/ScoreMeter";
+import { Progress } from "@/components/ui/Input";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Avatar } from "@/components/ui/Avatar";
 import { useScreeningStore } from "@/lib/store/screening-store";
 import { SAMPLE_CAREER_ROLES } from "@/lib/data/sample-data";
 import { formatYears } from "@/lib/utils";
 
 export default function DashboardPage() {
   const { screenings } = useScreeningStore();
+  const [greeting, setGreeting] = React.useState("Welcome back");
+
+  React.useEffect(() => {
+    const hour = new Date().getHours();
+    setGreeting(
+      hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"
+    );
+  }, []);
 
   const totalCandidates = screenings.reduce((acc, s) => acc + s.candidateCount, 0);
-  const pendingReviewCandidates = screenings.flatMap((s) => s.candidates).filter((c) => c.decision === "pending");
+  const pendingReviewCandidates = screenings
+    .flatMap((s) => s.candidates.map((c) => ({ candidate: c, jobId: s.id })))
+    .filter(({ candidate }) => candidate.decision === "pending");
+  const shortlisted = screenings.reduce((acc, s) => acc + s.shortlistedCount, 0);
 
   const primaryRole = SAMPLE_CAREER_ROLES["python-backend-developer"];
 
   return (
     <div className="space-y-6">
-      {/* Top Greeting & Key Summary */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-nirman-border">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-nirman-dark">
-            Good morning, Rashmin
-          </h1>
-          <div className="flex items-center gap-3 text-xs text-nirman-text-secondary mt-1">
+      <PageHeader
+        eyebrow="Overview"
+        title={`${greeting}, Rashmin`}
+        description="A live view of your role-fit pipelines, candidate evidence, and market requirements."
+        meta={
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-nirman-text-secondary">
             <span>
-              <strong className="text-nirman-dark">{screenings.length}</strong> active screenings
+              <strong className="font-semibold text-nirman-dark">
+                {screenings.length}
+              </strong>{" "}
+              active screenings
             </span>
-            <span>•</span>
+            <span className="h-3 w-px bg-nirman-border" />
             <span>
-              <strong className="text-nirman-dark">1</strong> role analysis
+              <strong className="font-semibold text-nirman-dark">
+                {totalCandidates}
+              </strong>{" "}
+              candidates evaluated
             </span>
-            <span>•</span>
+            <span className="h-3 w-px bg-nirman-border" />
             <span>
-              <strong className="text-nirman-dark">{pendingReviewCandidates.length}</strong> candidates requiring review
+              <strong className="font-semibold text-nirman-dark">
+                {pendingReviewCandidates.length}
+              </strong>{" "}
+              requiring review
             </span>
           </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <Link href="/career-intelligence">
-            <Button size="sm" variant="secondary">
-              <Compass className="h-4 w-4 mr-1.5" />
+        }
+        actions={
+          <>
+            <ButtonLink href="/career-intelligence" variant="secondary" size="sm">
+              <Compass className="h-4 w-4" />
               Role Intelligence
-            </Button>
-          </Link>
-          <Link href="/recruitment/new">
-            <Button size="sm" variant="primary">
-              <Plus className="h-4 w-4 mr-1.5" />
+            </ButtonLink>
+            <ButtonLink href="/recruitment/new" variant="primary" size="sm">
+              <Plus className="h-4 w-4" />
               New Screening
-            </Button>
-          </Link>
-        </div>
+            </ButtonLink>
+          </>
+        }
+      />
+
+      {/* KPI row */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard
+          label="Active Screenings"
+          value={screenings.length}
+          hint="Pipelines currently in review"
+          icon={Briefcase}
+          tone="accent"
+        />
+        <StatCard
+          label="Candidates Evaluated"
+          value={totalCandidates}
+          hint="Scored by the deterministic engine"
+          icon={Users}
+        />
+        <StatCard
+          label="Awaiting Review"
+          value={pendingReviewCandidates.length}
+          hint="Human decision pending"
+          icon={Clock}
+          tone="warning"
+        />
+        <StatCard
+          label="Shortlisted"
+          value={shortlisted}
+          hint="Recruiter final call"
+          icon={ShieldCheck}
+          tone="success"
+        />
       </div>
 
-      {/* 4 Focused Sections */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column (2 cols): Screening Activity & Candidate Queue */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Active Screening Activity */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Left column */}
+        <div className="space-y-6 lg:col-span-2">
           <Card>
             <CardHeader>
               <div>
                 <CardTitle>Active Recruitment Screenings</CardTitle>
-                <p className="text-xs text-nirman-text-secondary mt-0.5">
-                  Live screening pipelines and human review completion status.
+                <p className="mt-0.5 text-xs text-nirman-text-secondary">
+                  Live pipelines and human review completion status.
                 </p>
               </div>
               <Link
                 href="/recruitment"
-                className="text-xs text-nirman-accent hover:underline flex items-center gap-1 font-medium"
+                className="inline-flex items-center gap-1 rounded-sm text-xs font-medium text-nirman-accent transition-colors hover:text-nirman-accent-hover"
               >
                 View all <ChevronRight className="h-3 w-3" />
               </Link>
             </CardHeader>
             <CardContent className="space-y-3">
-              {screenings.map((screening) => (
-                <Link
-                  key={screening.id}
-                  href={`/recruitment/${screening.id}`}
-                  className="block p-3.5 rounded-lg border border-nirman-border bg-[#FAFAF8] hover:bg-white hover:border-nirman-accent/50 transition-all group"
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-semibold text-xs text-nirman-dark group-hover:text-nirman-accent transition-colors">
-                          {screening.title}
-                        </h4>
-                        <Badge variant="neutral" size="sm">
-                          {screening.department}
-                        </Badge>
+              {screenings.length === 0 ? (
+                <EmptyState
+                  icon={Briefcase}
+                  title="No active screenings"
+                  description="Create a screening to extract requirements and evaluate candidates."
+                  action={
+                    <ButtonLink href="/recruitment/new" size="sm">
+                      <Plus className="h-4 w-4" /> New Screening
+                    </ButtonLink>
+                  }
+                />
+              ) : (
+                screenings.map((screening) => {
+                  const reviewPct = Math.round(
+                    (screening.reviewedCount / (screening.candidateCount || 1)) * 100
+                  );
+                  return (
+                    <Link
+                      key={screening.id}
+                      href={`/recruitment/${screening.id}`}
+                      className="block rounded-lg border border-nirman-border bg-[#FAFAF8] p-3.5 transition-all hover:border-nirman-accent/40 hover:bg-white hover:shadow-subtle"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h4 className="text-xs font-semibold text-nirman-dark">
+                              {screening.title}
+                            </h4>
+                            <Badge variant="neutral" size="sm">
+                              {screening.department}
+                            </Badge>
+                          </div>
+                          <p className="mt-1 text-2xs text-nirman-text-secondary">
+                            {screening.candidateCount} processed ·{" "}
+                            {screening.shortlistedCount} shortlisted ·{" "}
+                            {screening.candidates.filter((c) => c.decision === "pending").length}{" "}
+                            pending review
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <span className="tabular-nums text-xs font-semibold text-nirman-dark">
+                            {reviewPct}%
+                          </span>
+                          <span className="block text-[10px] text-nirman-text-muted">
+                            reviewed
+                          </span>
+                        </div>
                       </div>
-                      <p className="text-[11px] text-nirman-text-secondary mt-1">
-                        {screening.candidateCount} candidates processed • {screening.shortlistedCount} shortlisted • {screening.candidates.filter(c => c.decision === "pending").length} pending review
-                      </p>
-                    </div>
-
-                    <div className="text-right">
-                      <span className="text-xs font-semibold text-nirman-dark">
-                        {Math.round((screening.reviewedCount / (screening.candidateCount || 1)) * 100)}%
-                      </span>
-                      <span className="text-[10px] text-nirman-text-muted block">reviewed</span>
-                    </div>
-                  </div>
-
-                  {/* Progress bar */}
-                  <div className="mt-2.5 h-1.5 w-full bg-nirman-border rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-nirman-accent"
-                      style={{
-                        width: `${Math.max(
-                          10,
-                          (screening.reviewedCount / (screening.candidateCount || 1)) * 100
-                        )}%`,
-                      }}
-                    />
-                  </div>
-                </Link>
-              ))}
+                      <Progress value={reviewPct} max={100} size="sm" className="mt-2.5" />
+                    </Link>
+                  );
+                })
+              )}
             </CardContent>
           </Card>
 
-          {/* Candidate Review Queue */}
           <Card>
             <CardHeader>
               <div>
                 <CardTitle>Candidate Review Queue</CardTitle>
-                <p className="text-xs text-nirman-text-secondary mt-0.5">
+                <p className="mt-0.5 text-xs text-nirman-text-secondary">
                   Candidates matched and waiting for human evaluation.
                 </p>
               </div>
-              <span className="text-xs text-nirman-text-muted font-mono">
-                {pendingReviewCandidates.length} awaiting review
-              </span>
+              <Badge variant="neutral" size="sm" mono>
+                {pendingReviewCandidates.length} awaiting
+              </Badge>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="divide-y divide-nirman-border">
-                {pendingReviewCandidates.slice(0, 5).map((cand) => (
-                  <div
-                    key={cand.candidateId}
-                    className="p-3.5 flex items-center justify-between hover:bg-nirman-bg/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 rounded-full bg-white border border-nirman-border flex items-center justify-center text-xs font-semibold text-nirman-dark">
-                        {cand.candidateName.charAt(0)}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-xs text-nirman-dark">
-                            {cand.candidateName}
+              {pendingReviewCandidates.length === 0 ? (
+                <div className="p-5">
+                  <EmptyState
+                    icon={ShieldCheck}
+                    title="Everything is reviewed"
+                    description="No candidates are currently waiting on a human decision."
+                  />
+                </div>
+              ) : (
+                <ul className="divide-y divide-nirman-border">
+                  {pendingReviewCandidates.slice(0, 5).map(({ candidate, jobId }) => (
+                    <li
+                      key={`${jobId}-${candidate.candidateId}`}
+                      className="flex items-center justify-between gap-3 px-5 py-3.5 transition-colors hover:bg-nirman-bg/50"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <Avatar name={candidate.candidateName} size="sm" />
+                        <div className="min-w-0">
+                          <span className="block truncate text-xs font-semibold text-nirman-dark">
+                            {candidate.candidateName}
                           </span>
-                          <StatusBadge status={cand.status} />
+                          <p className="mt-0.5 text-2xs text-nirman-text-secondary">
+                            {formatYears(candidate.calculatedExperienceYears)} exp ·{" "}
+                            {candidate.gaps.length}{" "}
+                            {candidate.gaps.length === 1 ? "gap" : "gaps"} detected
+                          </p>
                         </div>
-                        <p className="text-[11px] text-nirman-text-secondary mt-0.5">
-                          {formatYears(cand.calculatedExperienceYears)} exp • {cand.gaps.length} {cand.gaps.length === 1 ? "gap" : "gaps"} detected
-                        </p>
                       </div>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <span className="font-semibold text-xs text-nirman-dark">
-                          {Math.round(cand.totalScore)}%
-                        </span>
-                        <span className="text-[10px] text-nirman-text-muted block">match</span>
-                      </div>
-                      <Link
-                        href={`/recruitment/${screenings[0]?.id || "job-screening-py-01"}/candidate/${cand.candidateId}`}
-                      >
-                        <Button size="sm" variant="secondary">
+                      <div className="flex shrink-0 items-center gap-4">
+                        <ScoreMeter score={candidate.totalScore} size="sm" />
+                        <ButtonLink
+                          variant="secondary"
+                          size="sm"
+                          href={`/recruitment/${jobId}/candidate/${candidate.candidateId}`}
+                        >
                           Review
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                        </ButtonLink>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Right Column (1 col): Market Insight & Role Snapshot */}
+        {/* Right column */}
         <div className="space-y-6">
-          {/* Market Insight Snapshot */}
           <Card>
             <CardHeader>
               <div>
                 <CardTitle>Market Requirement Insight</CardTitle>
-                <p className="text-xs text-nirman-text-secondary mt-0.5">
+                <p className="mt-0.5 text-xs text-nirman-text-secondary">
                   {primaryRole.roleTitle}
                 </p>
               </div>
               <Badge variant="accent" size="sm">
-                Sample dataset
+                Sample
               </Badge>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="p-3 bg-[#FAFAF8] rounded border border-nirman-border">
-                <div className="text-xs text-nirman-text-secondary">
-                  Job requirements analyzed: <strong className="text-nirman-dark">{primaryRole.totalPostingsAnalyzed}</strong>
+              <div className="rounded-lg border border-nirman-border bg-[#FAFAF8] p-3 text-xs">
+                <div className="text-nirman-text-secondary">
+                  Requirements analyzed:{" "}
+                  <strong className="font-semibold text-nirman-dark">
+                    {primaryRole.totalPostingsAnalyzed}
+                  </strong>
                 </div>
-                <div className="text-xs text-nirman-text-primary mt-1">
-                  Top recurring skills: <span className="font-semibold">{primaryRole.skillPriorities.high.join(" · ")}</span>
+                <div className="mt-1 text-nirman-text-primary">
+                  Top skills:{" "}
+                  <span className="font-semibold">
+                    {primaryRole.skillPriorities.high.join(" · ")}
+                  </span>
                 </div>
               </div>
 
-              {/* Requirement frequencies */}
-              <div className="space-y-2">
-                <span className="text-[11px] font-semibold text-nirman-dark block">
-                  Observed Skill Distribution:
+              <div className="space-y-3">
+                <span className="text-2xs font-semibold uppercase tracking-wide text-nirman-text-muted">
+                  Observed skill frequency
                 </span>
-                {primaryRole.requirements.slice(0, 5).map((req, i) => (
-                  <div key={i} className="space-y-1">
+                {primaryRole.requirements.slice(0, 5).map((req) => (
+                  <div key={req.skill} className="space-y-1">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-nirman-text-primary font-medium">{req.skill}</span>
-                      <span className="font-mono text-nirman-dark font-semibold">{req.frequency}%</span>
+                      <span className="font-medium text-nirman-text-primary">
+                        {req.skill}
+                      </span>
+                      <span className="tabular-nums font-mono text-xs font-semibold text-nirman-dark">
+                        {req.frequency}%
+                      </span>
                     </div>
-                    <div className="h-1.5 w-full bg-nirman-border rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-nirman-accent"
-                        style={{ width: `${req.frequency}%` }}
-                      />
-                    </div>
+                    <Progress value={req.frequency} max={100} size="sm" tone="accent" />
                   </div>
                 ))}
               </div>
 
-              <Link href={`/career-intelligence/${primaryRole.roleId}`}>
-                <Button size="sm" variant="outline" className="w-full mt-2">
-                  View Full Role Intelligence
-                </Button>
-              </Link>
+              <ButtonLink
+                href={`/career-intelligence/${primaryRole.roleId}`}
+                variant="outline"
+                size="sm"
+                className="w-full"
+              >
+                View Full Role Intelligence
+                <ArrowRight className="h-3.5 w-3.5" />
+              </ButtonLink>
             </CardContent>
           </Card>
 
-          {/* Quick Engine Principles Card */}
-          <Card className="bg-nirman-bg/60 border-nirman-border">
-            <CardContent className="p-4 space-y-2 text-xs">
-              <div className="font-semibold text-nirman-dark flex items-center gap-1.5">
-                <CheckCircle2 className="h-4 w-4 text-nirman-success" />
-                Nirman Decision Standard
+          <Card variant="muted">
+            <CardContent className="space-y-2 p-4 text-xs">
+              <div className="flex items-center gap-1.5 font-semibold text-nirman-dark">
+                <ShieldCheck className="h-4 w-4 text-nirman-success" />
+                Decision Standard
               </div>
-              <p className="text-nirman-text-secondary leading-relaxed">
-                Nirman extracts structured requirements and computes mathematical scores. The recruiter always performs the final review and hiring decision.
+              <p className="leading-relaxed text-nirman-text-secondary">
+                Role Fit extracts structured requirements and computes mathematical
+                scores. The recruiter always performs the final review and hiring
+                decision.
               </p>
             </CardContent>
           </Card>

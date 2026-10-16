@@ -1,25 +1,43 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  Briefcase,
-  SlidersHorizontal,
-  Download,
-  Share2,
-  Users,
   CheckCircle2,
-  Filter,
+  Info,
   Plus,
-  RefreshCw,
+  RotateCcw,
+  SlidersHorizontal,
+  Users,
 } from "lucide-react";
-import { Button } from "@/components/ui/Button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
+import { Button, ButtonLink } from "@/components/ui/Button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { StatCard } from "@/components/ui/StatCard";
+import { Callout } from "@/components/ui/Callout";
 import { CandidateTable } from "@/components/recruitment/CandidateTable";
 import { useScreeningStore } from "@/lib/store/screening-store";
 import { ScoringWeights } from "@/types";
+
+const DEFAULT_WEIGHTS: ScoringWeights = {
+  requiredSkills: 50,
+  experience: 25,
+  preferredSkills: 15,
+  evidenceQuality: 10,
+};
+
+const WEIGHT_FIELDS: Array<{
+  key: keyof ScoringWeights;
+  label: string;
+  min: number;
+  max: number;
+}> = [
+  { key: "requiredSkills", label: "Required Skills", min: 20, max: 70 },
+  { key: "experience", label: "Experience Duration", min: 10, max: 50 },
+  { key: "preferredSkills", label: "Preferred Skills", min: 5, max: 30 },
+  { key: "evidenceQuality", label: "Evidence Quality", min: 0, max: 20 },
+];
 
 export default function JobScreeningDetailPage({
   params,
@@ -32,18 +50,21 @@ export default function JobScreeningDetailPage({
   const screening = screenings.find((s) => s.id === params.jobId) || screenings[0];
 
   const [showWeightsConfig, setShowWeightsConfig] = React.useState(false);
-  const [weights, setWeights] = React.useState<ScoringWeights>({
-    requiredSkills: 50,
-    experience: 25,
-    preferredSkills: 15,
-    evidenceQuality: 10,
-  });
+  const [weights, setWeights] = React.useState<ScoringWeights>(DEFAULT_WEIGHTS);
 
   if (!screening) {
     return notFound();
   }
 
+  const weightsTotal =
+    weights.requiredSkills +
+    weights.experience +
+    weights.preferredSkills +
+    weights.evidenceQuality;
+  const weightsValid = weightsTotal === 100;
+
   const handleApplyWeights = () => {
+    if (!weightsValid) return;
     recomputeScoresWithWeights(screening.id, weights);
     setShowWeightsConfig(false);
   };
@@ -51,193 +72,166 @@ export default function JobScreeningDetailPage({
   const strongMatchesCount = screening.candidates.filter(
     (c) => c.status === "Strong Match"
   ).length;
-  const reviewCount = screening.candidates.filter((c) => c.status === "Review").length;
-  const verificationCount = screening.candidates.filter(
-    (c) => c.status === "Needs Verification"
+  const reviewCount = screening.candidates.filter(
+    (c) => c.status === "Review"
   ).length;
 
   return (
     <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-nirman-border">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl font-bold tracking-tight text-nirman-dark">
-              {screening.title}
-            </h1>
-            <Badge variant="accent" size="sm">
-              Screening Active
-            </Badge>
-          </div>
-          <p className="text-xs text-nirman-text-secondary mt-1">
-            {screening.department} • {screening.location} • Minimum Experience: {screening.requirements.minimumExperienceYears} years
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setShowWeightsConfig(!showWeightsConfig)}
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5 mr-1.5" />
-            <span>Scoring Weights</span>
-          </Button>
-          <Link href="/recruitment/new">
-            <Button size="sm" variant="primary">
-              <Plus className="h-3.5 w-3.5 mr-1.5" />
-              Add Candidates
+      <PageHeader
+        breadcrumbs={[
+          { label: "Recruitment", href: "/recruitment" },
+          { label: screening.title },
+        ]}
+        eyebrow="Screening"
+        title={screening.title}
+        description={`${screening.department} · ${screening.location} · Minimum ${screening.requirements.minimumExperienceYears} years experience`}
+        actions={
+          <>
+            <Button
+              variant={showWeightsConfig ? "subtle" : "outline"}
+              size="sm"
+              onClick={() => setShowWeightsConfig((v) => !v)}
+              aria-expanded={showWeightsConfig}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              Scoring Weights
             </Button>
-          </Link>
-        </div>
-      </div>
+            <ButtonLink href="/recruitment/new" size="sm">
+              <Plus className="h-3.5 w-3.5" />
+              Add Candidates
+            </ButtonLink>
+          </>
+        }
+      />
 
-      {/* Weights Tuning Drawer / Card */}
       {showWeightsConfig && (
-        <Card className="border-nirman-accent/40 bg-white p-5 space-y-4">
-          <div className="flex items-center justify-between border-b border-nirman-border pb-2">
+        <Card className="animate-slide-up border-nirman-accent/40">
+          <CardHeader>
             <div>
-              <h3 className="text-xs font-semibold text-nirman-dark">
-                Deterministic Scoring Weight Configuration
-              </h3>
-              <p className="text-[11px] text-nirman-text-secondary">
-                Adjust points allocation. Total points must equal 100%.
+              <CardTitle>Deterministic Scoring Weights</CardTitle>
+              <p className="mt-0.5 text-xs text-nirman-text-secondary">
+                Adjust how many points each component contributes. The total must
+                equal 100.
               </p>
             </div>
-            <span className="text-xs font-mono font-semibold text-nirman-accent">
-              Total: {weights.requiredSkills + weights.experience + weights.preferredSkills + weights.evidenceQuality} / 100 pts
-            </span>
-          </div>
+            <div className="flex items-center gap-2">
+              <Badge variant={weightsValid ? "success" : "danger"} size="sm" mono>
+                Total {weightsTotal}/100
+              </Badge>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setWeights(DEFAULT_WEIGHTS)}
+                aria-label="Reset weights to default"
+                title="Reset to defaults"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              {WEIGHT_FIELDS.map((field) => (
+                <div key={field.key}>
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <label
+                      htmlFor={`weight-${field.key}`}
+                      className="text-xs font-medium text-nirman-text-primary"
+                    >
+                      {field.label}
+                    </label>
+                    <span className="tabular-nums font-mono text-xs font-semibold text-nirman-dark">
+                      {weights[field.key]} pts
+                    </span>
+                  </div>
+                  <input
+                    id={`weight-${field.key}`}
+                    type="range"
+                    min={field.min}
+                    max={field.max}
+                    step={5}
+                    value={weights[field.key]}
+                    onChange={(e) =>
+                      setWeights({
+                        ...weights,
+                        [field.key]: Number(e.target.value),
+                      })
+                    }
+                    className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-nirman-border accent-nirman-accent"
+                  />
+                </div>
+              ))}
+            </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-            <div>
-              <label className="block text-nirman-text-secondary font-medium mb-1">
-                Required Skills ({weights.requiredSkills} pts)
-              </label>
-              <input
-                type="range"
-                min={20}
-                max={70}
-                step={5}
-                value={weights.requiredSkills}
-                onChange={(e) => setWeights({ ...weights, requiredSkills: Number(e.target.value) })}
-                className="w-full accent-nirman-accent cursor-pointer"
-              />
-            </div>
-            <div>
-              <label className="block text-nirman-text-secondary font-medium mb-1">
-                Experience Duration ({weights.experience} pts)
-              </label>
-              <input
-                type="range"
-                min={10}
-                max={50}
-                step={5}
-                value={weights.experience}
-                onChange={(e) => setWeights({ ...weights, experience: Number(e.target.value) })}
-                className="w-full accent-nirman-accent cursor-pointer"
-              />
-            </div>
-            <div>
-              <label className="block text-nirman-text-secondary font-medium mb-1">
-                Preferred Skills ({weights.preferredSkills} pts)
-              </label>
-              <input
-                type="range"
-                min={5}
-                max={30}
-                step={5}
-                value={weights.preferredSkills}
-                onChange={(e) => setWeights({ ...weights, preferredSkills: Number(e.target.value) })}
-                className="w-full accent-nirman-accent cursor-pointer"
-              />
-            </div>
-            <div>
-              <label className="block text-nirman-text-secondary font-medium mb-1">
-                Evidence Quality ({weights.evidenceQuality} pts)
-              </label>
-              <input
-                type="range"
-                min={0}
-                max={20}
-                step={5}
-                value={weights.evidenceQuality}
-                onChange={(e) => setWeights({ ...weights, evidenceQuality: Number(e.target.value) })}
-                className="w-full accent-nirman-accent cursor-pointer"
-              />
-            </div>
-          </div>
+            {!weightsValid && (
+              <Callout tone="warning">
+                Weights currently sum to <strong>{weightsTotal}</strong>. Adjust by{" "}
+                {weightsTotal > 100
+                  ? `removing ${weightsTotal - 100}`
+                  : `adding ${100 - weightsTotal}`}{" "}
+                points before recomputing.
+              </Callout>
+            )}
 
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-nirman-border">
-            <Button size="sm" variant="ghost" onClick={() => setShowWeightsConfig(false)}>
-              Cancel
-            </Button>
-            <Button size="sm" variant="primary" onClick={handleApplyWeights}>
-              Recompute Match Scores
-            </Button>
-          </div>
+            <div className="flex items-center justify-end gap-2 border-t border-nirman-border pt-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowWeightsConfig(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleApplyWeights}
+                disabled={!weightsValid}
+              >
+                Recompute Match Scores
+              </Button>
+            </div>
+          </CardContent>
         </Card>
       )}
 
-      {/* Summary KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <Card className="p-4 bg-white">
-          <span className="text-[11px] font-medium text-nirman-text-secondary block">
-            Total Candidates
-          </span>
-          <span className="text-2xl font-bold text-nirman-dark mt-1 block">
-            {screening.candidates.length}
-          </span>
-          <span className="text-[10px] text-nirman-text-muted mt-0.5 block">
-            Evaluated by pipeline
-          </span>
-        </Card>
-
-        <Card className="p-4 bg-white">
-          <span className="text-[11px] font-medium text-nirman-text-secondary block">
-            Strong Matches
-          </span>
-          <span className="text-2xl font-bold text-nirman-success-text mt-1 block">
-            {strongMatchesCount}
-          </span>
-          <span className="text-[10px] text-nirman-text-muted mt-0.5 block">
-            Meets 100% core specs
-          </span>
-        </Card>
-
-        <Card className="p-4 bg-white">
-          <span className="text-[11px] font-medium text-nirman-text-secondary block">
-            Review Recommended
-          </span>
-          <span className="text-2xl font-bold text-nirman-warning-text mt-1 block">
-            {reviewCount}
-          </span>
-          <span className="text-[10px] text-nirman-text-muted mt-0.5 block">
-            Minor gap identified
-          </span>
-        </Card>
-
-        <Card className="p-4 bg-white">
-          <span className="text-[11px] font-medium text-nirman-text-secondary block">
-            Shortlisted by Recruiter
-          </span>
-          <span className="text-2xl font-bold text-nirman-accent mt-1 block">
-            {screening.shortlistedCount}
-          </span>
-          <span className="text-[10px] text-nirman-text-muted mt-0.5 block">
-            Human final call
-          </span>
-        </Card>
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard
+          label="Total Candidates"
+          value={screening.candidates.length}
+          hint="Evaluated by the pipeline"
+          icon={Users}
+          tone="accent"
+        />
+        <StatCard
+          label="Strong Matches"
+          value={strongMatchesCount}
+          hint="Meets core specifications"
+          icon={CheckCircle2}
+          tone="success"
+        />
+        <StatCard
+          label="Review Recommended"
+          value={reviewCount}
+          hint="Minor gap identified"
+          icon={Info}
+          tone="warning"
+        />
+        <StatCard
+          label="Shortlisted"
+          value={screening.shortlistedCount}
+          hint="Recruiter final call"
+          icon={CheckCircle2}
+        />
       </div>
 
-      {/* Structured Candidate Shortlist Table */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-nirman-dark">
-            Screened Candidate Shortlist & Explainability
+            Screened Candidate Shortlist
           </h2>
-          <span className="text-xs text-nirman-text-muted">
-            Click any candidate row or 'Review' to inspect evidence citations
+          <span className="text-2xs text-nirman-text-muted">
+            Select a row or “Review” to inspect evidence citations
           </span>
         </div>
 

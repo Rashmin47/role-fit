@@ -1,11 +1,13 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
-import { Plus, Briefcase, ChevronRight, Users, CheckCircle2 } from "lucide-react";
-import { Button } from "@/components/ui/Button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
+import { ChevronRight, Briefcase, Plus } from "lucide-react";
+import { ButtonLink } from "@/components/ui/Button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Progress } from "@/components/ui/Input";
 import { useScreeningStore } from "@/lib/store/screening-store";
 
 export default function RecruitmentWorkspacePage() {
@@ -13,107 +15,131 @@ export default function RecruitmentWorkspacePage() {
 
   return (
     <div className="space-y-6">
-      {/* Top Bar */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-nirman-border">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-nirman-dark">
-            Recruitment Intelligence
-          </h1>
-          <p className="text-xs text-nirman-text-secondary mt-1">
-            Structured screening workflows, deterministic candidate scoring, and explainable shortlists.
-          </p>
-        </div>
+      <PageHeader
+        eyebrow="Recruitment"
+        title="Recruitment Intelligence"
+        description="Structured screening workflows, deterministic candidate scoring, and explainable shortlists."
+        actions={
+          <ButtonLink href="/recruitment/new" size="sm">
+            <Plus className="h-4 w-4" />
+            New Screening
+          </ButtonLink>
+        }
+      />
 
-        <Link href="/recruitment/new">
-          <Button size="sm" variant="primary">
-            <Plus className="h-4 w-4 mr-1.5" />
-            New Screening Workflow
-          </Button>
-        </Link>
-      </div>
+      {screenings.length === 0 ? (
+        <EmptyState
+          icon={Briefcase}
+          title="No screenings yet"
+          description="Create your first screening to extract requirements and score candidates against them."
+          action={
+            <ButtonLink href="/recruitment/new" size="sm">
+              <Plus className="h-4 w-4" />
+              New Screening
+            </ButtonLink>
+          }
+          className="py-16"
+        />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {screenings.map((screening) => {
+            const pendingCount = screening.candidates.filter(
+              (c) => c.decision === "pending"
+            ).length;
+            const reviewPct = Math.round(
+              (screening.reviewedCount / (screening.candidateCount || 1)) * 100
+            );
 
-      {/* Active Screenings Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {screenings.map((screening) => {
-          const pendingCount = screening.candidates.filter((c) => c.decision === "pending").length;
-          const reviewPct = Math.round(
-            (screening.reviewedCount / (screening.candidateCount || 1)) * 100
-          );
-
-          return (
-            <Card key={screening.id} className="hover:border-nirman-accent/50 transition-all">
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
-                  <div className="h-8 w-8 rounded bg-nirman-accent-light text-nirman-accent flex items-center justify-center font-bold text-xs">
-                    <Briefcase className="h-4 w-4" />
+            return (
+              <Card key={screening.id} className="flex flex-col">
+                <CardHeader className="items-start">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-nirman-accent-light text-nirman-accent">
+                      <Briefcase className="h-4 w-4" aria-hidden />
+                    </span>
+                    <div className="min-w-0">
+                      <CardTitle className="truncate">{screening.title}</CardTitle>
+                      <span className="mt-0.5 block truncate text-2xs text-nirman-text-muted">
+                        {screening.department} · {screening.location}
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <CardTitle className="text-sm">{screening.title}</CardTitle>
-                    <span className="text-[11px] text-nirman-text-muted">
-                      {screening.department} • {screening.location}
+                  <Badge variant="success" size="sm" dot>
+                    Active
+                  </Badge>
+                </CardHeader>
+
+                <CardContent className="flex flex-1 flex-col gap-4 pt-4">
+                  <div className="flex flex-wrap gap-1.5">
+                    {screening.requirements.requiredSkills.slice(0, 5).map((req, i) => (
+                      <span
+                        key={i}
+                        className="rounded border border-nirman-border bg-nirman-bg px-2 py-0.5 text-2xs text-nirman-text-secondary"
+                      >
+                        {req.name}
+                      </span>
+                    ))}
+                    <span className="rounded border border-nirman-border bg-nirman-bg px-2 py-0.5 text-2xs text-nirman-text-secondary">
+                      {screening.requirements.minimumExperienceYears}y+ exp
                     </span>
                   </div>
-                </div>
-                <Badge variant="accent" size="sm">
-                  Active
-                </Badge>
-              </CardHeader>
 
-              <CardContent className="space-y-4 pt-1">
-                {/* Requirements Badges */}
-                <div className="flex flex-wrap gap-1">
-                  {screening.requirements.requiredSkills.map((req, i) => (
-                    <span
-                      key={i}
-                      className="text-[10px] px-2 py-0.5 rounded bg-nirman-bg border border-nirman-border text-nirman-text-secondary"
+                  <div className="grid grid-cols-3 gap-2 rounded-lg border border-nirman-border bg-[#FAFAF8] p-3 text-center">
+                    <div>
+                      <span className="tabular-nums block text-sm font-semibold text-nirman-dark">
+                        {screening.candidateCount}
+                      </span>
+                      <span className="text-[10px] text-nirman-text-muted">
+                        Processed
+                      </span>
+                    </div>
+                    <div>
+                      <span className="tabular-nums block text-sm font-semibold text-nirman-success-text">
+                        {screening.shortlistedCount}
+                      </span>
+                      <span className="text-[10px] text-nirman-text-muted">
+                        Shortlisted
+                      </span>
+                    </div>
+                    <div>
+                      <span className="tabular-nums block text-sm font-semibold text-nirman-warning-text">
+                        {pendingCount}
+                      </span>
+                      <span className="text-[10px] text-nirman-text-muted">
+                        To Review
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-2xs text-nirman-text-secondary">
+                      <span>Review progress</span>
+                      <span className="tabular-nums font-medium text-nirman-dark">
+                        {reviewPct}%
+                      </span>
+                    </div>
+                    <Progress value={reviewPct} max={100} size="sm" />
+                  </div>
+
+                  <div className="mt-auto flex items-center justify-between gap-3 border-t border-nirman-border pt-4">
+                    <span className="truncate font-mono text-2xs text-nirman-text-muted">
+                      {screening.id}
+                    </span>
+                    <ButtonLink
+                      href={`/recruitment/${screening.id}`}
+                      variant="secondary"
+                      size="sm"
                     >
-                      {req.name}
-                    </span>
-                  ))}
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-nirman-bg border border-nirman-border text-nirman-text-secondary">
-                    {screening.requirements.minimumExperienceYears}y+ Exp
-                  </span>
-                </div>
-
-                {/* Candidate Stats */}
-                <div className="grid grid-cols-3 gap-2 p-2.5 rounded bg-[#FAFAF8] border border-nirman-border text-center text-xs">
-                  <div>
-                    <span className="text-xs font-bold text-nirman-dark block">
-                      {screening.candidateCount}
-                    </span>
-                    <span className="text-[10px] text-nirman-text-muted">Processed</span>
+                      Open Dashboard
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </ButtonLink>
                   </div>
-                  <div>
-                    <span className="text-xs font-bold text-nirman-success-text block">
-                      {screening.shortlistedCount}
-                    </span>
-                    <span className="text-[10px] text-nirman-text-muted">Shortlisted</span>
-                  </div>
-                  <div>
-                    <span className="text-xs font-bold text-nirman-warning-text block">
-                      {pendingCount}
-                    </span>
-                    <span className="text-[10px] text-nirman-text-muted">To Review</span>
-                  </div>
-                </div>
-
-                {/* Action Link */}
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-[11px] text-nirman-text-muted font-mono">
-                    ID: {screening.id}
-                  </span>
-                  <Link href={`/recruitment/${screening.id}`}>
-                    <Button size="sm" variant="secondary">
-                      <span>Open Screening Dashboard</span>
-                      <ChevronRight className="h-3.5 w-3.5 ml-1" />
-                    </Button>
-                  </Link>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

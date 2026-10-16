@@ -2,20 +2,9 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { CareerRoleIntelligence } from "@/types";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
 import { SAMPLE_CAREER_ROLES } from "@/lib/data/sample-data";
-import {
-  Compass,
-  ArrowRight,
-  TrendingUp,
-  Database,
-  Layers,
-  Code,
-  Shield,
-  BarChart3,
-} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Check } from "lucide-react";
 
 interface RoleSelectorProps {
   activeRoleId?: string;
@@ -26,7 +15,7 @@ export function RoleSelector({ activeRoleId, onSelectRole }: RoleSelectorProps) 
   const roles = Object.values(SAMPLE_CAREER_ROLES);
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {roles.map((role) => {
         const isSelected = activeRoleId === role.roleId;
 
@@ -34,30 +23,37 @@ export function RoleSelector({ activeRoleId, onSelectRole }: RoleSelectorProps) 
           <Link
             key={role.roleId}
             href={`/career-intelligence/${role.roleId}`}
-            className={`block p-4 rounded-lg border text-left transition-all ${
+            onClick={() => onSelectRole?.(role.roleId)}
+            aria-current={isSelected ? "true" : undefined}
+            className={cn(
+              "group flex flex-col rounded-xl border bg-white p-4 text-left transition-all duration-200",
               isSelected
-                ? "bg-white border-nirman-accent ring-1 ring-nirman-accent shadow-card"
-                : "bg-white border-nirman-border hover:border-nirman-accent/40 shadow-subtle hover:bg-nirman-bg/40"
-            }`}
+                ? "border-nirman-accent ring-1 ring-nirman-accent shadow-card"
+                : "border-nirman-border shadow-subtle hover:-translate-y-0.5 hover:border-nirman-accent/40 hover:shadow-raised"
+            )}
           >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-mono text-nirman-text-muted">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="font-mono text-[11px] text-nirman-text-muted">
                 {role.totalPostingsAnalyzed} postings
               </span>
-              {isSelected && (
-                <span className="h-2 w-2 rounded-full bg-nirman-accent" />
+              {isSelected ? (
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-nirman-accent text-white">
+                  <Check className="h-2.5 w-2.5" aria-hidden />
+                </span>
+              ) : (
+                <span className="h-4 w-4 rounded-full border border-nirman-border" />
               )}
             </div>
 
-            <h3 className="font-semibold text-xs text-nirman-dark mb-1">
+            <h3 className="text-xs font-semibold text-nirman-dark">
               {role.roleTitle}
             </h3>
 
-            <div className="flex flex-wrap gap-1 mt-2.5">
-              {role.skillPriorities.high.slice(0, 3).map((skill, i) => (
+            <div className="mt-2.5 flex flex-wrap gap-1">
+              {role.skillPriorities.high.slice(0, 3).map((skill) => (
                 <span
-                  key={i}
-                  className="text-[10px] px-1.5 py-0.5 rounded bg-nirman-bg text-nirman-text-secondary border border-nirman-border"
+                  key={skill}
+                  className="rounded border border-nirman-border bg-nirman-bg px-1.5 py-0.5 text-[10px] text-nirman-text-secondary"
                 >
                   {skill}
                 </span>

@@ -10,22 +10,22 @@ module.exports = {
     extend: {
       colors: {
         nirman: {
-          bg: "#F7F7F4",
+          bg: "#F6F7F5",
           surface: "#FFFFFF",
-          sidebar: "#15171A",
-          dark: "#17191C",
+          sidebar: "#14161A",
+          dark: "#16181D",
           accent: {
             DEFAULT: "#315EF6",
             hover: "#2548C7",
             light: "#EEF3FF",
-            subtle: "#E0EAFF",
+            subtle: "#DDE7FF",
           },
-          border: "#E5E7EB",
-          borderSubtle: "#F0F1F3",
+          border: "#E4E7EC",
+          borderSubtle: "#EEF0F3",
           text: {
-            primary: "#17191C",
-            secondary: "#667085",
-            muted: "#98A2B3",
+            primary: "#16181D",
+            secondary: "#4A5568",
+            muted: "#697586",
           },
           success: {
             DEFAULT: "#16835B",
@@ -45,11 +45,17 @@ module.exports = {
             border: "#FECDCA",
             text: "#B42318",
           },
+          info: {
+            DEFAULT: "#2680C2",
+            bg: "#EFF8FF",
+            border: "#B2DDFF",
+            text: "#175CD3",
+          },
         },
       },
       fontFamily: {
         sans: [
-          "Inter",
+          "var(--font-sans)",
           "-apple-system",
           "BlinkMacSystemFont",
           "Segoe UI",
@@ -57,24 +63,55 @@ module.exports = {
           "sans-serif",
         ],
         mono: [
-          "JetBrains Mono",
+          "var(--font-mono)",
+          "ui-monospace",
+          "SFMono-Regular",
           "Menlo",
           "Monaco",
           "Consolas",
           "monospace",
         ],
       },
+      fontSize: {
+        "2xs": ["0.6875rem", { lineHeight: "1rem" }], // 11px
+      },
       borderRadius: {
         DEFAULT: "6px",
         sm: "4px",
         md: "8px",
         lg: "10px",
-        xl: "12px",
+        xl: "14px",
+        "2xl": "18px",
       },
       boxShadow: {
-        subtle: "0 1px 2px 0 rgba(0, 0, 0, 0.04)",
-        card: "0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05)",
-        popover: "0 4px 12px 0 rgba(0, 0, 0, 0.08)",
+        subtle: "0 1px 2px 0 rgba(16, 24, 40, 0.04)",
+        card: "0 1px 3px 0 rgba(16, 24, 40, 0.06), 0 1px 2px -1px rgba(16, 24, 40, 0.06)",
+        raised:
+          "0 4px 8px -2px rgba(16, 24, 40, 0.08), 0 2px 4px -2px rgba(16, 24, 40, 0.06)",
+        popover: "0 12px 24px -6px rgba(16, 24, 40, 0.14), 0 4px 8px -4px rgba(16, 24, 40, 0.1)",
+      },
+      ringColor: {
+        DEFAULT: "#315EF6",
+      },
+      ringOffsetColor: {
+        DEFAULT: "#FFFFFF",
+      },
+      transitionTimingFunction: {
+        "out-quint": "cubic-bezier(0.22, 1, 0.36, 1)",
+      },
+      keyframes: {
+        "fade-in": {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
+        },
+        "slide-up": {
+          from: { opacity: "0", transform: "translateY(4px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
+      },
+      animation: {
+        "fade-in": "fade-in 200ms cubic-bezier(0.22, 1, 0.36, 1)",
+        "slide-up": "slide-up 240ms cubic-bezier(0.22, 1, 0.36, 1)",
       },
     },
   },

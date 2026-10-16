@@ -2,108 +2,123 @@
 
 import * as React from "react";
 import { CareerRoleIntelligence } from "@/types";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { cn } from "@/lib/utils";
 import {
-  TrendingUp,
-  BarChart2,
-  Calendar,
-  Layers,
-  Award,
-  AlertCircle,
-  CheckCircle2,
   BookOpen,
+  Calendar,
+  FileSearch,
+  TrendingUp,
 } from "lucide-react";
 
-export function MarketRequirementsView({ role }: { role: CareerRoleIntelligence }) {
-  const [selectedCategory, setSelectedCategory] = React.useState<string>("All");
+const CATEGORIES = [
+  "All",
+  "Language",
+  "Framework",
+  "Database",
+  "Tool",
+  "Cloud",
+  "Architecture",
+] as const;
 
-  const categories = ["All", "Language", "Framework", "Database", "Tool", "Cloud", "Architecture"];
+const LEVEL_TONE: Record<string, string> = {
+  Strong: "text-nirman-success-text",
+  "Working knowledge": "text-nirman-accent",
+  Basic: "text-nirman-warning-text",
+  Missing: "text-nirman-danger-text",
+};
+
+export function MarketRequirementsView({ role }: { role: CareerRoleIntelligence }) {
+  const [category, setCategory] = React.useState<string>("All");
 
   const filteredRequirements = role.requirements.filter(
-    (r) => selectedCategory === "All" || r.category === selectedCategory
+    (r) => category === "All" || r.category === category
   );
 
   return (
     <div className="space-y-6">
-      {/* Header Info */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-2 border-b border-nirman-border">
+      <div className="flex flex-col justify-between gap-3 border-b border-nirman-border pb-4 sm:flex-row sm:items-end">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-semibold text-nirman-dark tracking-tight">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-semibold tracking-tight text-nirman-dark">
               {role.roleTitle}
-            </h1>
+            </h2>
             <Badge variant="neutral" size="sm">
               Sample market dataset
             </Badge>
           </div>
-          <p className="text-xs text-nirman-text-secondary mt-0.5">
+          <p className="mt-1 max-w-2xl text-xs leading-relaxed text-nirman-text-secondary">
             {role.summary}
           </p>
         </div>
-
-        <div className="flex items-center gap-3 text-xs text-nirman-text-secondary font-mono">
-          <span>Analyzed: <strong className="text-nirman-dark">{role.totalPostingsAnalyzed} postings</strong></span>
-          <span>•</span>
-          <span>Updated: {role.lastUpdated}</span>
+        <div className="flex items-center gap-3 font-mono text-2xs text-nirman-text-secondary">
+          <span className="inline-flex items-center gap-1">
+            <FileSearch className="h-3.5 w-3.5" aria-hidden />
+            {role.totalPostingsAnalyzed} postings
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <Calendar className="h-3.5 w-3.5" aria-hidden />
+            {role.lastUpdated}
+          </span>
         </div>
       </div>
 
-      {/* Grid: Market Requirements & Experience Expectations */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Market Requirements Distribution (2 cols) */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <CardHeader>
+          <CardHeader className="flex-col items-start gap-3 sm:flex-row sm:items-center">
             <div>
-              <CardTitle>Observed Market Requirements</CardTitle>
-              <p className="text-xs text-nirman-text-secondary mt-0.5">
-                Frequency percentage across analyzed job specifications.
+              <CardTitle>Observed market requirements</CardTitle>
+              <p className="mt-0.5 text-xs text-nirman-text-secondary">
+                Requirement frequency across analyzed job specifications.
               </p>
             </div>
-            {/* Category Filter */}
-            <div className="flex items-center gap-1 bg-nirman-bg p-0.5 rounded border border-nirman-border text-[11px]">
-              {categories.slice(0, 4).map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`px-2 py-0.5 rounded transition-colors ${
-                    selectedCategory === cat
-                      ? "bg-white font-medium text-nirman-dark shadow-subtle"
-                      : "text-nirman-text-secondary hover:text-nirman-dark"
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              aria-label="Filter requirements by category"
+              value={category}
+              onChange={setCategory}
+              size="sm"
+              options={CATEGORIES.map((c) => ({ value: c, label: c }))}
+            />
           </CardHeader>
-          <CardContent className="space-y-3">
-            {filteredRequirements.map((req, idx) => (
-              <div key={idx} className="space-y-1">
+          <CardContent className="space-y-4">
+            {filteredRequirements.length === 0 && (
+              <p className="py-6 text-center text-xs text-nirman-text-muted">
+                No requirements in this category.
+              </p>
+            )}
+            {filteredRequirements.map((req) => (
+              <div key={req.skill} className="space-y-1.5">
                 <div className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
-                    <span className="font-semibold text-nirman-dark">{req.skill}</span>
-                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-[#F2F4F7] text-nirman-text-secondary font-mono">
+                    <span className="font-semibold text-nirman-dark">
+                      {req.skill}
+                    </span>
+                    <span className="rounded bg-[#F2F4F7] px-1.5 py-0.5 font-mono text-[10px] text-nirman-text-secondary">
                       {req.category}
                     </span>
+                    {req.trend === "growing" && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-nirman-success-text">
+                        <TrendingUp className="h-3 w-3" aria-hidden />
+                        Growing
+                      </span>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-semibold text-nirman-dark">
-                      {req.frequency}%
-                    </span>
-                  </div>
+                  <span className="tabular-nums font-mono text-xs font-semibold text-nirman-dark">
+                    {req.frequency}%
+                  </span>
                 </div>
-                {/* Clean Bar */}
-                <div className="h-2 w-full bg-[#E5E7EB] rounded-full overflow-hidden">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-nirman-border">
                   <div
-                    className={`h-full rounded-full transition-all duration-300 ${
+                    className={cn(
+                      "h-full rounded-full transition-all duration-500 ease-out-quint",
                       req.frequency >= 70
                         ? "bg-nirman-accent"
                         : req.frequency >= 40
-                        ? "bg-nirman-accent/80"
+                        ? "bg-nirman-accent/75"
                         : "bg-nirman-text-muted"
-                    }`}
+                    )}
                     style={{ width: `${req.frequency}%` }}
                   />
                 </div>
@@ -112,27 +127,29 @@ export function MarketRequirementsView({ role }: { role: CareerRoleIntelligence 
           </CardContent>
         </Card>
 
-        {/* Experience Expectations & Skill Priorities (1 col) */}
         <div className="space-y-6">
-          {/* Experience Distribution */}
           <Card>
             <CardHeader>
-              <CardTitle>Experience Expectations</CardTitle>
+              <CardTitle>Experience expectations</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {role.experienceExpectations.map((exp, idx) => (
-                <div key={idx} className="space-y-1">
+              {role.experienceExpectations.map((exp) => (
+                <div key={exp.range} className="space-y-1">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-medium text-nirman-dark">{exp.range}</span>
-                    <span className="font-mono font-semibold text-nirman-dark">{exp.percentage}%</span>
+                    <span className="font-medium text-nirman-dark">
+                      {exp.range}
+                    </span>
+                    <span className="tabular-nums font-mono font-semibold text-nirman-dark">
+                      {exp.percentage}%
+                    </span>
                   </div>
-                  <div className="h-1.5 w-full bg-[#E5E7EB] rounded-full overflow-hidden">
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-nirman-border">
                     <div
-                      className="h-full bg-nirman-text-primary rounded-full"
+                      className="h-full rounded-full bg-nirman-text-primary"
                       style={{ width: `${exp.percentage}%` }}
                     />
                   </div>
-                  <span className="text-[10px] text-nirman-text-muted block">
+                  <span className="block text-[10px] text-nirman-text-muted">
                     {exp.description}
                   </span>
                 </div>
@@ -140,92 +157,94 @@ export function MarketRequirementsView({ role }: { role: CareerRoleIntelligence 
             </CardContent>
           </Card>
 
-          {/* Skill Priority Tiers */}
           <Card>
             <CardHeader>
-              <CardTitle>Skill Priorities</CardTitle>
+              <CardTitle>Skill priorities</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 text-xs">
-              <div>
-                <span className="text-[11px] font-semibold text-nirman-dark block mb-1.5 flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-nirman-success" /> High Priority (Core)
-                </span>
-                <div className="flex flex-wrap gap-1">
-                  {role.skillPriorities.high.map((s, i) => (
-                    <Badge key={i} variant="success" size="sm">
-                      {s}
-                    </Badge>
-                  ))}
+            <CardContent className="space-y-4 text-xs">
+              {[
+                {
+                  label: "High priority · core",
+                  dot: "bg-nirman-success",
+                  variant: "success" as const,
+                  items: role.skillPriorities.high,
+                },
+                {
+                  label: "Medium priority",
+                  dot: "bg-nirman-accent",
+                  variant: "accent" as const,
+                  items: role.skillPriorities.medium,
+                },
+                {
+                  label: "Emerging · differentiator",
+                  dot: "bg-nirman-warning",
+                  variant: "warning" as const,
+                  items: role.skillPriorities.emerging,
+                },
+              ].map((tier, index) => (
+                <div
+                  key={tier.label}
+                  className={cn(index > 0 && "border-t border-nirman-border pt-3")}
+                >
+                  <span className="mb-1.5 flex items-center gap-1.5 text-2xs font-semibold text-nirman-dark">
+                    <span className={cn("h-2 w-2 rounded-full", tier.dot)} />
+                    {tier.label}
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {tier.items.map((s) => (
+                      <Badge key={s} variant={tier.variant} size="sm">
+                        {s}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-              </div>
-
-              <div className="pt-2 border-t border-nirman-border">
-                <span className="text-[11px] font-semibold text-nirman-dark block mb-1.5 flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-nirman-accent" /> Medium Priority
-                </span>
-                <div className="flex flex-wrap gap-1">
-                  {role.skillPriorities.medium.map((s, i) => (
-                    <Badge key={i} variant="accent" size="sm">
-                      {s}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-
-              <div className="pt-2 border-t border-nirman-border">
-                <span className="text-[11px] font-semibold text-nirman-dark block mb-1.5 flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-nirman-warning" /> Emerging / Differentiator
-                </span>
-                <div className="flex flex-wrap gap-1">
-                  {role.skillPriorities.emerging.map((s, i) => (
-                    <Badge key={i} variant="warning" size="sm">
-                      {s}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
+              ))}
             </CardContent>
           </Card>
         </div>
       </div>
 
-      {/* Skill Gap Comparison (if present for this role) */}
       {role.sampleUserGaps && (
-        <Card className="border-nirman-accent/30 shadow-subtle">
-          <CardHeader className="bg-nirman-bg/40">
+        <Card className="border-nirman-accent/30">
+          <CardHeader>
             <div>
-              <div className="flex items-center gap-2">
-                <CardTitle>User Profile vs Target Role Gap Analysis</CardTitle>
-                <Badge variant="accent" size="sm">Interactive Profile Model</Badge>
+              <div className="flex flex-wrap items-center gap-2">
+                <CardTitle>Profile vs target role gap analysis</CardTitle>
+                <Badge variant="accent" size="sm">
+                  Interactive profile model
+                </Badge>
               </div>
-              <p className="text-xs text-nirman-text-secondary mt-0.5">
-                Target: <strong className="text-nirman-dark">{role.sampleUserGaps.targetRole}</strong> • Profile: <strong className="text-nirman-dark">{role.sampleUserGaps.userProfileName}</strong>
+              <p className="mt-0.5 text-xs text-nirman-text-secondary">
+                Target:{" "}
+                <strong className="text-nirman-dark">
+                  {role.sampleUserGaps.targetRole}
+                </strong>{" "}
+                · Profile:{" "}
+                <strong className="text-nirman-dark">
+                  {role.sampleUserGaps.userProfileName}
+                </strong>
               </p>
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Current Skills Matrix */}
             <div>
-              <span className="text-xs font-semibold text-nirman-dark block mb-2">
-                Verified Candidate Profile Skills:
+              <span className="mb-2 block text-2xs font-semibold uppercase tracking-wide text-nirman-text-muted">
+                Verified profile skills
               </span>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-                {role.sampleUserGaps.currentSkills.map((sk, i) => (
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                {role.sampleUserGaps.currentSkills.map((sk) => (
                   <div
-                    key={i}
-                    className="p-2.5 rounded border border-nirman-border bg-white flex flex-col justify-between text-xs"
+                    key={sk.name}
+                    className="flex flex-col justify-between rounded-lg border border-nirman-border bg-white p-2.5 text-xs"
                   >
-                    <span className="font-semibold text-nirman-dark">{sk.name}</span>
+                    <span className="font-semibold text-nirman-dark">
+                      {sk.name}
+                    </span>
                     <span
-                      className={`text-[10px] font-medium mt-1 ${
-                        sk.level === "Strong"
-                          ? "text-nirman-success-text"
-                          : sk.level === "Working knowledge"
-                          ? "text-nirman-accent"
-                          : sk.level === "Basic"
-                          ? "text-nirman-warning-text"
-                          : "text-nirman-danger-text"
-                      }`}
+                      className={cn(
+                        "mt-1 text-[10px] font-medium",
+                        LEVEL_TONE[sk.level] ?? "text-nirman-text-muted"
+                      )}
                     >
                       {sk.level}
                     </span>
@@ -234,38 +253,49 @@ export function MarketRequirementsView({ role }: { role: CareerRoleIntelligence 
               </div>
             </div>
 
-            {/* Priority Gaps Detailed Cards */}
             <div>
-              <span className="text-xs font-semibold text-nirman-dark block mb-3">
-                Priority Gaps to Target for Role Alignment:
+              <span className="mb-3 block text-2xs font-semibold uppercase tracking-wide text-nirman-text-muted">
+                Priority gaps to target
               </span>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 {role.sampleUserGaps.priorityGaps.map((gap, i) => (
                   <div
-                    key={i}
-                    className="p-4 rounded-md border border-nirman-border bg-[#FAFAF8] flex flex-col justify-between space-y-3"
+                    key={`${gap.skill}-${i}`}
+                    className="flex flex-col gap-3 rounded-lg border border-nirman-border bg-[#FAFAF8] p-4"
                   >
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="font-semibold text-xs text-nirman-dark">
-                          {i + 1}. {gap.skill}
-                        </span>
-                        <Badge variant={gap.importance === "high" ? "danger" : "warning"} size="sm">
-                          {gap.importance}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-nirman-text-secondary leading-relaxed">
-                        <strong className="text-nirman-text-primary">Why it matters:</strong> {gap.whyItMatters}
-                      </p>
-                      <div className="mt-2 text-[11px] text-nirman-text-muted bg-white p-2 rounded border border-nirman-border">
-                        <strong>Evidence:</strong> {gap.evidenceFromRequirements}
-                      </div>
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-xs font-semibold text-nirman-dark">
+                        {i + 1}. {gap.skill}
+                      </span>
+                      <Badge
+                        variant={gap.importance === "high" ? "danger" : "warning"}
+                        size="sm"
+                      >
+                        {gap.importance}
+                      </Badge>
                     </div>
-
-                    <div className="pt-2 border-t border-nirman-border text-xs text-nirman-text-primary flex items-start gap-1.5">
-                      <BookOpen className="h-3.5 w-3.5 text-nirman-accent shrink-0 mt-0.5" />
-                      <span className="text-[11px] leading-relaxed">
-                        <strong>Action:</strong> {gap.suggestedLearningDirection}
+                    <p className="text-2xs leading-relaxed text-nirman-text-secondary">
+                      <strong className="text-nirman-text-primary">
+                        Why it matters:
+                      </strong>{" "}
+                      {gap.whyItMatters}
+                    </p>
+                    {gap.evidenceFromRequirements && (
+                      <div className="rounded-md border border-nirman-border bg-white p-2 text-[10px] leading-relaxed text-nirman-text-muted">
+                        <strong className="text-nirman-text-secondary">
+                          Evidence:
+                        </strong>{" "}
+                        {gap.evidenceFromRequirements}
+                      </div>
+                    )}
+                    <div className="flex items-start gap-1.5 border-t border-nirman-border pt-2 text-2xs leading-relaxed text-nirman-text-primary">
+                      <BookOpen
+                        className="mt-0.5 h-3.5 w-3.5 shrink-0 text-nirman-accent"
+                        aria-hidden
+                      />
+                      <span>
+                        <strong>Action:</strong>{" "}
+                        {gap.suggestedLearningDirection}
                       </span>
                     </div>
                   </div>

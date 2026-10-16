@@ -1,5 +1,6 @@
 import { RoleSelector } from "@/components/career/RoleSelector";
 import { MarketRequirementsView } from "@/components/career/MarketRequirementsView";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { SAMPLE_CAREER_ROLES } from "@/lib/data/sample-data";
 
 export default function CareerIntelligencePage() {
@@ -7,25 +8,19 @@ export default function CareerIntelligencePage() {
 
   return (
     <div className="space-y-6">
-      {/* Top Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-nirman-dark">
-          Career Intelligence
-        </h1>
-        <p className="text-xs text-nirman-text-secondary mt-1">
-          Understand what employers are actually asking for across verified job market datasets.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Career"
+        title="Career Intelligence"
+        description="Understand what employers actually ask for across verified job market datasets."
+      />
 
-      {/* Role Selection Grid */}
       <div>
-        <label className="block text-xs font-semibold text-nirman-text-primary mb-2">
-          Select Target Engineering Role:
-        </label>
+        <p className="mb-2 block text-2xs font-semibold uppercase tracking-wide text-nirman-text-muted">
+          Select a target engineering role
+        </p>
         <RoleSelector activeRoleId="python-backend-developer" />
       </div>
 
-      {/* Default Role Intelligence View */}
       <MarketRequirementsView role={defaultRole} />
     </div>
   );
