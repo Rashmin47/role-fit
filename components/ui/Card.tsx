@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 
 export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   variant?: "default" | "muted" | "flat";
-  /** Adds hover elevation/affordance for clickable cards. */
+  /** Adds hover affordance for clickable cards. */
   interactive?: boolean;
 }
 
@@ -17,13 +17,11 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-xl transition-all duration-200",
-        variant === "default" &&
-          "border border-nirman-border bg-white shadow-card",
-        variant === "muted" && "border border-nirman-border bg-nirman-bg/60",
-        variant === "flat" && "border border-nirman-border bg-white",
-        interactive &&
-          "cursor-pointer hover:-translate-y-0.5 hover:border-nirman-accent/40 hover:shadow-raised",
+        "rounded-lg border border-nirman-border",
+        variant === "default" && "bg-white",
+        variant === "muted" && "bg-nirman-inset",
+        variant === "flat" && "bg-white",
+        interactive && "transition-colors hover:border-[#d6d6d3]",
         className
       )}
       {...props}
@@ -41,7 +39,7 @@ export function CardHeader({
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-3 border-b border-nirman-border px-5 py-4",
+        "flex items-center justify-between gap-4 border-b border-nirman-border px-5 py-4",
         className
       )}
       {...props}
@@ -59,7 +57,7 @@ export function CardTitle({
   return (
     <h3
       className={cn(
-        "text-sm font-semibold tracking-tight text-nirman-dark",
+        "text-sm font-semibold text-nirman-dark",
         className
       )}
       {...props}
@@ -76,7 +74,7 @@ export function CardDescription({
 }: React.HTMLAttributes<HTMLParagraphElement>) {
   return (
     <p
-      className={cn("mt-0.5 text-xs text-nirman-text-secondary", className)}
+      className={cn("mt-0.5 text-[13px] text-nirman-text-secondary", className)}
       {...props}
     >
       {children}
@@ -104,7 +102,7 @@ export function CardFooter({
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-3 rounded-b-xl border-t border-nirman-border bg-[#FAFAF8] px-5 py-3",
+        "flex items-center justify-between gap-3 rounded-b-lg border-t border-nirman-border bg-nirman-inset px-5 py-3",
         className
       )}
       {...props}

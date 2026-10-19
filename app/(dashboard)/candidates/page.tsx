@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Search, Users } from "lucide-react";
+import { Search } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { ButtonLink } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/Badge";
@@ -10,7 +11,6 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { ScoreMeter } from "@/components/ui/ScoreMeter";
-import { Avatar } from "@/components/ui/Avatar";
 import { useScreeningStore } from "@/lib/store/screening-store";
 import { formatYears } from "@/lib/utils";
 import type { CandidateScoreResult } from "@/types";
@@ -58,22 +58,21 @@ function CandidatesDirectory({ initialQuery }: { initialQuery: string }) {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Directory"
         title="Candidates"
-        description="Global talent pool across active screenings and historical pipeline records."
+        description="Every candidate across active screenings, with the evidence behind each score."
         actions={
           <div className="relative w-full sm:w-72">
             <Search
-              className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-nirman-text-muted"
+              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-nirman-text-muted"
               aria-hidden
             />
             <input
               type="search"
-              placeholder="Search candidate or role…"
+              placeholder="Search by name or role…"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               aria-label="Search candidates"
-              className="h-9 w-full rounded-md border border-nirman-border bg-white pl-8 pr-3 text-xs text-nirman-dark placeholder:text-nirman-text-muted transition-colors focus:border-nirman-accent focus:outline-none focus:ring-2 focus:ring-nirman-accent/25"
+              className="h-8 w-full rounded-md border border-nirman-border bg-white pl-8 pr-3 text-[13px] text-nirman-dark placeholder:text-nirman-text-muted transition-colors focus:border-nirman-accent focus:outline-none focus:ring-2 focus:ring-nirman-accent/20"
             />
           </div>
         }
@@ -83,8 +82,9 @@ function CandidatesDirectory({ initialQuery }: { initialQuery: string }) {
         aria-label="Filter by recommendation"
         value={statusFilter}
         onChange={setStatusFilter}
+        size="sm"
         options={[
-          { value: "all", label: "All candidates", count: allCandidates.length },
+          { value: "all", label: "All", count: allCandidates.length },
           {
             value: "Strong Match",
             label: "Strong",
@@ -102,36 +102,35 @@ function CandidatesDirectory({ initialQuery }: { initialQuery: string }) {
       <Card className="overflow-hidden">
         {filtered.length === 0 ? (
           <EmptyState
-            icon={Users}
             title="No candidates found"
             description="Try a different search term or clear the recommendation filter."
             className="rounded-none border-0 bg-transparent py-16"
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left text-xs">
+            <table className="w-full border-collapse text-left text-[13px]">
               <thead>
-                <tr className="border-b border-nirman-border bg-[#FAFAF8] text-nirman-text-secondary">
-                  <th scope="col" className="px-4 py-3 font-medium">
+                <tr className="border-b border-nirman-border bg-nirman-inset text-nirman-text-secondary">
+                  <th scope="col" className="px-5 py-2.5 font-medium">
                     Candidate
                   </th>
-                  <th scope="col" className="px-4 py-3 font-medium">
-                    Screening Role
+                  <th scope="col" className="px-5 py-2.5 font-medium">
+                    Screening
                   </th>
-                  <th scope="col" className="px-4 py-3 font-medium">
-                    Match Score
+                  <th scope="col" className="px-5 py-2.5 font-medium">
+                    Match
                   </th>
-                  <th scope="col" className="px-4 py-3 font-medium">
+                  <th scope="col" className="px-5 py-2.5 font-medium">
                     Experience
                   </th>
-                  <th scope="col" className="px-4 py-3 font-medium">
+                  <th scope="col" className="px-5 py-2.5 font-medium">
                     Recommendation
                   </th>
-                  <th scope="col" className="px-4 py-3 font-medium">
+                  <th scope="col" className="px-5 py-2.5 font-medium">
                     Decision
                   </th>
-                  <th scope="col" className="px-4 py-3 text-right font-medium">
-                    Action
+                  <th scope="col" className="px-5 py-2.5 text-right font-medium">
+                    <span className="sr-only">Actions</span>
                   </th>
                 </tr>
               </thead>
@@ -139,43 +138,37 @@ function CandidatesDirectory({ initialQuery }: { initialQuery: string }) {
                 {filtered.map(({ candidate, jobTitle, jobId }) => (
                   <tr
                     key={`${jobId}-${candidate.candidateId}`}
-                    className="transition-colors hover:bg-nirman-bg/50"
+                    className="transition-colors hover:bg-nirman-inset"
                   >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <Avatar name={candidate.candidateName} size="sm" />
-                        <div className="min-w-0">
-                          <span className="block truncate font-semibold text-nirman-dark">
-                            {candidate.candidateName}
-                          </span>
-                          <span className="block font-mono text-2xs text-nirman-text-muted">
-                            {candidate.candidateId}
-                          </span>
-                        </div>
-                      </div>
+                    <td className="px-5 py-3">
+                      <Link
+                        href={`/recruitment/${jobId}/candidate/${candidate.candidateId}`}
+                        className="font-medium text-nirman-dark hover:text-nirman-accent"
+                      >
+                        {candidate.candidateName}
+                      </Link>
                     </td>
-                    <td className="px-4 py-3 text-nirman-text-primary">
-                      {jobTitle}
-                    </td>
-                    <td className="px-4 py-3">
+                    <td className="px-5 py-3 text-nirman-text-secondary">{jobTitle}</td>
+                    <td className="px-5 py-3">
                       <ScoreMeter score={candidate.totalScore} size="sm" />
                     </td>
-                    <td className="px-4 py-3 text-nirman-text-secondary">
+                    <td className="px-5 py-3 tabular-nums text-nirman-text-secondary">
                       {formatYears(candidate.calculatedExperienceYears)}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-5 py-3">
                       <StatusBadge status={candidate.status} />
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-5 py-3">
                       <StatusBadge status={candidate.decision} />
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-5 py-3 text-right">
                       <ButtonLink
                         href={`/recruitment/${jobId}/candidate/${candidate.candidateId}`}
-                        variant="secondary"
+                        variant="ghost"
                         size="sm"
+                        className="text-nirman-accent hover:bg-nirman-accent-light"
                       >
-                        View Details
+                        Review
                       </ButtonLink>
                     </td>
                   </tr>

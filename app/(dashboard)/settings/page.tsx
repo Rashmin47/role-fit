@@ -4,11 +4,10 @@ import * as React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Badge } from "@/components/ui/Badge";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Callout } from "@/components/ui/Callout";
 import { cn } from "@/lib/utils";
-import { Cpu, RotateCcw, Save, ShieldCheck, Sliders } from "lucide-react";
+import { RotateCcw, Save } from "lucide-react";
 
 const DEFAULT_WEIGHTS = {
   requiredSkills: 50,
@@ -23,22 +22,22 @@ const WEIGHT_FIELDS: Array<{
   min: number;
   max: number;
 }> = [
-  { key: "requiredSkills", label: "Required mandatory skills", min: 20, max: 70 },
-  { key: "experience", label: "Verified experience", min: 10, max: 50 },
-  { key: "preferredSkills", label: "Preferred / bonus skills", min: 5, max: 30 },
-  { key: "evidenceQuality", label: "Evidence quality & portfolio", min: 0, max: 20 },
+  { key: "requiredSkills", label: "Required skills", min: 20, max: 70 },
+  { key: "experience", label: "Experience", min: 10, max: 50 },
+  { key: "preferredSkills", label: "Preferred skills", min: 5, max: 30 },
+  { key: "evidenceQuality", label: "Evidence quality", min: 0, max: 20 },
 ];
 
 const PROVIDERS = [
   {
     id: "mock",
-    name: "Local rule & pattern extractor",
-    description: "100% offline, zero latency, runs without a background daemon.",
+    name: "Local rule-based extractor",
+    description: "Fully offline, deterministic, and available without any setup.",
   },
   {
     id: "ollama",
-    name: "Ollama open-weight LLM",
-    description: "Connects to local models (Llama 3.2, Qwen 2.5, Gemma 2, Mistral).",
+    name: "Ollama open-weight model",
+    description: "Connects to a local model server such as Llama 3.2 or Qwen 2.5.",
   },
 ] as const;
 
@@ -58,36 +57,29 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-3xl space-y-6">
       <PageHeader
-        eyebrow="Configuration"
-        title="Platform Settings"
-        description="Configure extraction providers, scoring weights, and normalization policies."
+        title="Settings"
+        description="Choose how requirements are extracted and how scores are weighted."
       />
 
       {savedSuccess && (
         <Callout tone="success" className="animate-fade-in">
-          Configuration saved successfully.
+          Settings saved.
         </Callout>
       )}
 
       <Card>
         <CardHeader>
-          <div className="flex items-center gap-2">
-            <Cpu className="h-4 w-4 text-nirman-accent" aria-hidden />
-            <CardTitle>AI Extraction Provider</CardTitle>
+          <div>
+            <CardTitle>Extraction provider</CardTitle>
+            <p className="mt-0.5 text-[13px] text-nirman-text-secondary">
+              Role Fit only uses local or open-weight models. Extraction never
+              produces a score.
+            </p>
           </div>
-          <Badge variant="success" size="sm" dot>
-            Zero hosted LLM lock-in
-          </Badge>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-xs leading-relaxed text-nirman-text-secondary">
-            Role Fit never depends on proprietary cloud APIs for extraction.
-            Requirements are parsed via open-weight models or local deterministic
-            pattern parsers.
-          </p>
-
           <div
             role="radiogroup"
             aria-label="Active extraction provider"
@@ -103,19 +95,25 @@ export default function SettingsPage() {
                   aria-checked={isActive}
                   onClick={() => setProvider(p.id)}
                   className={cn(
-                    "rounded-lg border p-3.5 text-left text-xs transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nirman-accent focus-visible:ring-offset-2",
+                    "rounded-lg border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nirman-accent focus-visible:ring-offset-2",
                     isActive
-                      ? "border-nirman-accent bg-white ring-1 ring-nirman-accent"
-                      : "border-nirman-border bg-white hover:border-nirman-text-muted/40 hover:bg-nirman-bg/40"
+                      ? "border-nirman-dark bg-white"
+                      : "border-nirman-border bg-white hover:border-[#d0d0cd]"
                   )}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-semibold text-nirman-dark">{p.name}</span>
-                    {isActive && (
-                      <span className="h-2 w-2 shrink-0 rounded-full bg-nirman-accent" />
-                    )}
+                    <span className="text-[13px] font-medium text-nirman-dark">
+                      {p.name}
+                    </span>
+                    <span
+                      className={cn(
+                        "h-2 w-2 shrink-0 rounded-full",
+                        isActive ? "bg-nirman-accent" : "bg-[#e0e0de]"
+                      )}
+                      aria-hidden
+                    />
                   </div>
-                  <p className="mt-1 text-2xs leading-relaxed text-nirman-text-secondary">
+                  <p className="mt-1.5 text-xs leading-relaxed text-nirman-text-secondary">
                     {p.description}
                   </p>
                 </button>
@@ -126,12 +124,12 @@ export default function SettingsPage() {
           {provider === "ollama" && (
             <div className="grid animate-fade-in grid-cols-1 gap-4 border-t border-nirman-border pt-4 sm:grid-cols-2">
               <Input
-                label="Ollama server base URL"
+                label="Server URL"
                 value={ollamaUrl}
                 onChange={(e) => setOllamaUrl(e.target.value)}
               />
               <Input
-                label="Model identifier"
+                label="Model"
                 value={ollamaModel}
                 onChange={(e) => setOllamaModel(e.target.value)}
               />
@@ -142,14 +140,21 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <div className="flex items-center gap-2">
-            <Sliders className="h-4 w-4 text-nirman-accent" aria-hidden />
-            <CardTitle>Default Scoring Weights</CardTitle>
+          <div>
+            <CardTitle>Default scoring weights</CardTitle>
+            <p className="mt-0.5 text-[13px] text-nirman-text-secondary">
+              Applied to new screenings. The four components must total 100.
+            </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge variant={weightsValid ? "success" : "danger"} size="sm" mono>
-              Total {weightsTotal}/100
-            </Badge>
+          <div className="flex items-center gap-3">
+            <span
+              className={cn(
+                "tabular-nums text-[13px] font-medium",
+                weightsValid ? "text-nirman-text-secondary" : "text-nirman-danger-text"
+              )}
+            >
+              {weightsTotal} / 100
+            </span>
             <Button
               variant="ghost"
               size="icon-sm"
@@ -157,27 +162,23 @@ export default function SettingsPage() {
               aria-label="Reset weights to default"
               title="Reset to defaults"
             >
-              <RotateCcw className="h-3.5 w-3.5" />
+              <RotateCcw className="h-4 w-4" />
             </Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
-          <p className="text-xs leading-relaxed text-nirman-text-secondary">
-            Sets the baseline weighting applied to every new screening run.
-          </p>
-
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             {WEIGHT_FIELDS.map((field) => (
               <div key={field.key}>
-                <div className="mb-1.5 flex items-center justify-between">
+                <div className="mb-2 flex items-center justify-between">
                   <label
                     htmlFor={`setting-${field.key}`}
-                    className="text-xs font-medium text-nirman-text-primary"
+                    className="text-[13px] font-medium text-nirman-text-primary"
                   >
                     {field.label}
                   </label>
-                  <span className="tabular-nums font-mono text-xs font-semibold text-nirman-dark">
-                    {weights[field.key]} pts
+                  <span className="tabular-nums text-[13px] font-medium text-nirman-dark">
+                    {weights[field.key]}
                   </span>
                 </div>
                 <input
@@ -189,7 +190,7 @@ export default function SettingsPage() {
                   onChange={(e) =>
                     setWeights({ ...weights, [field.key]: Number(e.target.value) })
                   }
-                  className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-nirman-border accent-nirman-accent"
+                  className="h-1 w-full cursor-pointer appearance-none rounded-full bg-[#e6e6e4] accent-nirman-accent"
                 />
               </div>
             ))}
@@ -204,18 +205,16 @@ export default function SettingsPage() {
               points so the total equals 100.
             </Callout>
           )}
-
-          <div className="flex items-center gap-2 border-t border-nirman-border pt-4 text-2xs text-nirman-text-secondary">
-            <ShieldCheck className="h-3.5 w-3.5 text-nirman-success" aria-hidden />
-            All scoring is computed deterministically in application logic.
-          </div>
         </CardContent>
       </Card>
 
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-4 border-t border-nirman-border pt-5">
+        <p className="text-xs text-nirman-text-muted">
+          Scores are computed deterministically in application logic.
+        </p>
         <Button variant="primary" onClick={handleSave} disabled={!weightsValid}>
           <Save className="h-4 w-4" />
-          Save Platform Settings
+          Save settings
         </Button>
       </div>
     </div>

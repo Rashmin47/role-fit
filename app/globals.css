@@ -3,83 +3,86 @@
 /*
  * Role Fit design tokens (Tailwind CSS v4, CSS-first configuration).
  *
- * Class names are preserved from the original v3 config so components do not
- * need to change: e.g. `bg-nirman-bg`, `text-nirman-text-muted`,
- * `shadow-card`, `rounded-xl`, `text-2xs`, `ease-out-quint`.
+ * Class names are preserved so components do not need to change:
+ * `bg-nirman-bg`, `text-nirman-text-muted`, `shadow-card`, `text-2xs`, etc.
+ *
+ * The aesthetic is deliberately quiet: a near-white canvas, one restrained
+ * accent, hairline borders instead of heavy elevation, and muted status tints
+ * rather than saturated fills.
  */
 @theme {
   /* Surfaces */
-  --color-nirman-bg: #f6f7f5;
+  --color-nirman-bg: #f7f7f6;
   --color-nirman-surface: #ffffff;
-  --color-nirman-sidebar: #14161a;
-  --color-nirman-dark: #16181d;
+  --color-nirman-sidebar: #ffffff;
+  --color-nirman-dark: #18181b;
+  --color-nirman-inset: #fafafa;
 
-  /* Accent */
-  --color-nirman-accent: #315ef6;
-  --color-nirman-accent-hover: #2548c7;
-  --color-nirman-accent-light: #eef3ff;
-  --color-nirman-accent-subtle: #dde7ff;
+  /* Accent — used sparingly: primary actions, active nav, links */
+  --color-nirman-accent: #3554d1;
+  --color-nirman-accent-hover: #2b46b4;
+  --color-nirman-accent-light: #eef1fc;
+  --color-nirman-accent-subtle: #dfe4fa;
 
   /* Borders */
-  --color-nirman-border: #e4e7ec;
-  --color-nirman-borderSubtle: #eef0f3;
+  --color-nirman-border: #e6e6e4;
+  --color-nirman-borderSubtle: #efefee;
 
   /* Text */
-  --color-nirman-text-primary: #16181d;
-  --color-nirman-text-secondary: #4a5568;
-  --color-nirman-text-muted: #697586;
+  --color-nirman-text-primary: #27272a;
+  --color-nirman-text-secondary: #5c5c63;
+  --color-nirman-text-muted: #8c8c93;
 
-  /* Semantic states */
-  --color-nirman-success: #16835b;
-  --color-nirman-success-bg: #ecfdf3;
-  --color-nirman-success-border: #a6f4c5;
-  --color-nirman-success-text: #027a48;
+  /* Semantic states — muted tints, readable foregrounds */
+  --color-nirman-success: #1f7a4d;
+  --color-nirman-success-bg: #f1f9f4;
+  --color-nirman-success-border: #cfe8da;
+  --color-nirman-success-text: #17603c;
 
-  --color-nirman-warning: #b7791f;
-  --color-nirman-warning-bg: #fffaeb;
-  --color-nirman-warning-border: #fedf89;
-  --color-nirman-warning-text: #b54708;
+  --color-nirman-warning: #9a6700;
+  --color-nirman-warning-bg: #fdf8ec;
+  --color-nirman-warning-border: #f0e2b6;
+  --color-nirman-warning-text: #7a5200;
 
-  --color-nirman-danger: #c24141;
-  --color-nirman-danger-bg: #fef3f2;
-  --color-nirman-danger-border: #fecdca;
-  --color-nirman-danger-text: #b42318;
+  --color-nirman-danger: #b42318;
+  --color-nirman-danger-bg: #fdf3f2;
+  --color-nirman-danger-border: #f3d3cf;
+  --color-nirman-danger-text: #912018;
 
-  --color-nirman-info: #2680c2;
-  --color-nirman-info-bg: #eff8ff;
-  --color-nirman-info-border: #b2ddff;
-  --color-nirman-info-text: #175cd3;
+  --color-nirman-info: #1f5fa8;
+  --color-nirman-info-bg: #f2f7fd;
+  --color-nirman-info-border: #cfe0f5;
+  --color-nirman-info-text: #174c86;
 
   /* Typography */
   --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo,
     Monaco, Consolas, monospace;
-  --text-2xs: 0.6875rem;
-  --text-2xs--line-height: 1rem;
+  /* 12px floor: nothing in the product should render smaller than this. */
+  --text-2xs: 0.75rem;
+  --text-2xs--line-height: 1.0625rem;
 
-  /* Radii: `rounded` resolves to 6px (v3 DEFAULT preserved) and `rounded-sm`
-     to the original 4px. */
+  /* Radii — restrained, consistent */
   --radius-xs: 4px;
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 10px;
-  --radius-xl: 14px;
-  --radius-2xl: 18px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
 
-  /* Elevation */
-  --shadow-subtle: 0 1px 2px 0 rgba(16, 24, 40, 0.04);
-  --shadow-card: 0 1px 3px 0 rgba(16, 24, 40, 0.06),
-    0 1px 2px -1px rgba(16, 24, 40, 0.06);
-  --shadow-raised: 0 4px 8px -2px rgba(16, 24, 40, 0.08),
-    0 2px 4px -2px rgba(16, 24, 40, 0.06);
-  --shadow-popover: 0 12px 24px -6px rgba(16, 24, 40, 0.14),
-    0 4px 8px -4px rgba(16, 24, 40, 0.1);
+  /* Elevation — reserved for overlays and controls, not content cards */
+  --shadow-subtle: 0 1px 2px 0 rgba(24, 24, 27, 0.04);
+  --shadow-card: 0 1px 2px 0 rgba(24, 24, 27, 0.03);
+  --shadow-raised: 0 2px 6px -1px rgba(24, 24, 27, 0.08),
+    0 1px 3px -1px rgba(24, 24, 27, 0.05);
+  --shadow-popover: 0 12px 28px -8px rgba(24, 24, 27, 0.16),
+    0 4px 10px -4px rgba(24, 24, 27, 0.08);
 
   /* Motion */
   --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
-  --animate-fade-in: fade-in 200ms cubic-bezier(0.22, 1, 0.36, 1);
-  --animate-slide-up: slide-up 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-fade-in: fade-in 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-slide-up: slide-up 220ms cubic-bezier(0.22, 1, 0.36, 1);
 
   @keyframes fade-in {
     from {
@@ -134,7 +137,7 @@
   }
 
   ::selection {
-    background-color: rgba(49, 94, 246, 0.16);
+    background-color: rgba(53, 84, 209, 0.14);
     color: var(--color-nirman-dark);
   }
 
@@ -144,12 +147,11 @@
     outline-offset: 2px;
   }
 
-  /* Chunkier, higher-contrast headings */
   h1,
   h2,
   h3,
   h4 {
-    letter-spacing: -0.011em;
+    letter-spacing: -0.014em;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -189,12 +191,12 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #d5d9e0;
+  background: #d9d9d6;
   border: 3px solid transparent;
   background-clip: padding-box;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #b4bac5;
+  background: #c2c2be;
   background-clip: padding-box;
 }

@@ -1,14 +1,22 @@
 "use client";
 
 import * as React from "react";
-import { ChevronRight, Briefcase, Plus } from "lucide-react";
+import Link from "next/link";
+import { Plus, ChevronRight } from "lucide-react";
 import { ButtonLink } from "@/components/ui/Button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Progress } from "@/components/ui/Input";
 import { useScreeningStore } from "@/lib/store/screening-store";
+
+const STATUS_META = {
+  ready: { label: "Active", variant: "success" as const },
+  draft: { label: "Draft", variant: "neutral" as const },
+  extracting: { label: "Extracting", variant: "warning" as const },
+  completed: { label: "Completed", variant: "info" as const },
+};
 
 export default function RecruitmentWorkspacePage() {
   const { screenings } = useScreeningStore();
@@ -16,138 +24,121 @@ export default function RecruitmentWorkspacePage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Recruitment"
-        title="Recruitment Intelligence"
-        description="Structured screening workflows, deterministic candidate scoring, and explainable shortlists."
+        title="Recruitment"
+        description="Screen candidates against a role with deterministic scores and cited evidence."
         actions={
           <ButtonLink href="/recruitment/new" size="sm">
             <Plus className="h-4 w-4" />
-            New Screening
+            New screening
           </ButtonLink>
         }
       />
+
       {screenings.length === 0 ? (
         <EmptyState
-          icon={Briefcase}
           title="No screenings yet"
           description="Create your first screening to extract requirements and score candidates against them."
           action={
             <ButtonLink href="/recruitment/new" size="sm">
               <Plus className="h-4 w-4" />
-              New Screening
+              New screening
             </ButtonLink>
           }
-          className="py-16"
+          className="py-20"
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {screenings.map((screening) => {
-            const pendingCount = screening.candidates.filter(
-              (c) => c.decision === "pending"
-            ).length;
-            const reviewPct = Math.round(
-              (screening.reviewedCount / (screening.candidateCount || 1)) * 100
-            );
-            const statusMeta = {
-              ready: { label: "Active", variant: "success" as const },
-              draft: { label: "Draft", variant: "neutral" as const },
-              extracting: { label: "Extracting", variant: "warning" as const },
-              completed: { label: "Completed", variant: "info" as const },
-            }[screening.status];
+        <Card className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-left text-[13px]">
+              <thead>
+                <tr className="border-b border-nirman-border bg-nirman-inset text-nirman-text-secondary">
+                  <th scope="col" className="px-5 py-2.5 font-medium">
+                    Role
+                  </th>
+                  <th scope="col" className="px-5 py-2.5 font-medium">
+                    Status
+                  </th>
+                  <th scope="col" className="px-5 py-2.5 text-right font-medium">
+                    Candidates
+                  </th>
+                  <th scope="col" className="px-5 py-2.5 text-right font-medium">
+                    Shortlisted
+                  </th>
+                  <th scope="col" className="px-5 py-2.5 text-right font-medium">
+                    Pending
+                  </th>
+                  <th scope="col" className="w-44 px-5 py-2.5 font-medium">
+                    Review progress
+                  </th>
+                  <th scope="col" className="w-10 px-3 py-2.5">
+                    <span className="sr-only">Open</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-nirman-border">
+                {screenings.map((screening) => {
+                  const pending = screening.candidates.filter(
+                    (c) => c.decision === "pending"
+                  ).length;
+                  const reviewPct = Math.round(
+                    (screening.reviewedCount / (screening.candidateCount || 1)) * 100
+                  );
+                  const status = STATUS_META[screening.status];
 
-            return (
-              <Card key={screening.id} className="flex flex-col">
-                <CardHeader className="items-start">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-nirman-accent-light text-nirman-accent">
-                      <Briefcase className="h-4 w-4" aria-hidden />
-                    </span>
-                    <div className="min-w-0">
-                      <CardTitle className="truncate">{screening.title}</CardTitle>
-                      <span className="mt-0.5 block truncate text-2xs text-nirman-text-muted">
-                        {screening.department} · {screening.location}
-                      </span>
-                    </div>
-                  </div>
-                  <Badge
-                    variant={statusMeta.variant}
-                    size="sm"
-                    dot={screening.status === "ready"}
-                  >
-                    {statusMeta.label}
-                  </Badge>
-                </CardHeader>
-
-                <CardContent className="flex flex-1 flex-col gap-4 pt-4">
-                  <div className="flex flex-wrap gap-1.5">
-                    {screening.requirements.requiredSkills.slice(0, 5).map((req, i) => (
-                      <span
-                        key={i}
-                        className="rounded border border-nirman-border bg-nirman-bg px-2 py-0.5 text-2xs text-nirman-text-secondary"
-                      >
-                        {req.name}
-                      </span>
-                    ))}
-                    <span className="rounded border border-nirman-border bg-nirman-bg px-2 py-0.5 text-2xs text-nirman-text-secondary">
-                      {screening.requirements.minimumExperienceYears}y+ exp
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 rounded-lg border border-nirman-border bg-[#FAFAF8] p-3 text-center">
-                    <div>
-                      <span className="tabular-nums block text-sm font-semibold text-nirman-dark">
-                        {screening.candidateCount}
-                      </span>
-                      <span className="text-[10px] text-nirman-text-muted">
-                        Processed
-                      </span>
-                    </div>
-                    <div>
-                      <span className="tabular-nums block text-sm font-semibold text-nirman-success-text">
-                        {screening.shortlistedCount}
-                      </span>
-                      <span className="text-[10px] text-nirman-text-muted">
-                        Shortlisted
-                      </span>
-                    </div>
-                    <div>
-                      <span className="tabular-nums block text-sm font-semibold text-nirman-warning-text">
-                        {pendingCount}
-                      </span>
-                      <span className="text-[10px] text-nirman-text-muted">
-                        To Review
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-2xs text-nirman-text-secondary">
-                      <span>Review progress</span>
-                      <span className="tabular-nums font-medium text-nirman-dark">
-                        {reviewPct}%
-                      </span>
-                    </div>
-                    <Progress value={reviewPct} max={100} size="sm" />
-                  </div>
-
-                  <div className="mt-auto flex items-center justify-between gap-3 border-t border-nirman-border pt-4">
-                    <span className="truncate font-mono text-2xs text-nirman-text-muted">
-                      {screening.id}
-                    </span>
-                    <ButtonLink
-                      href={`/recruitment/${screening.id}`}
-                      variant="secondary"
-                      size="sm"
+                  return (
+                    <tr
+                      key={screening.id}
+                      className="group transition-colors hover:bg-nirman-inset"
                     >
-                      Open Dashboard
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    </ButtonLink>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                      <td className="px-5 py-3.5">
+                        <Link
+                          href={`/recruitment/${screening.id}`}
+                          className="block min-w-0"
+                        >
+                          <span className="block truncate font-medium text-nirman-dark">
+                            {screening.title}
+                          </span>
+                          <span className="mt-0.5 block truncate text-xs text-nirman-text-muted">
+                            {screening.department} · {screening.location}
+                          </span>
+                        </Link>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <Badge variant={status.variant}>{status.label}</Badge>
+                      </td>
+                      <td className="px-5 py-3.5 text-right tabular-nums text-nirman-text-primary">
+                        {screening.candidateCount}
+                      </td>
+                      <td className="px-5 py-3.5 text-right tabular-nums text-nirman-text-primary">
+                        {screening.shortlistedCount}
+                      </td>
+                      <td className="px-5 py-3.5 text-right tabular-nums text-nirman-text-primary">
+                        {pending}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-2.5">
+                          <Progress value={reviewPct} max={100} size="sm" tone="neutral" />
+                          <span className="w-8 shrink-0 text-right tabular-nums text-xs text-nirman-text-muted">
+                            {reviewPct}%
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3.5">
+                        <Link
+                          href={`/recruitment/${screening.id}`}
+                          aria-label={`Open ${screening.title}`}
+                          className="flex h-7 w-7 items-center justify-center rounded-md text-nirman-text-muted transition-colors hover:bg-black/[0.05] hover:text-nirman-dark"
+                        >
+                          <ChevronRight className="h-4 w-4" aria-hidden />
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
     </div>
   );

@@ -15,32 +15,29 @@ export type ButtonVariant =
 export type ButtonSize = "sm" | "md" | "lg" | "icon" | "icon-sm";
 
 const VARIANTS: Record<ButtonVariant, string> = {
-  primary:
-    "bg-nirman-accent text-white border border-transparent shadow-subtle hover:bg-nirman-accent-hover active:bg-nirman-accent-hover",
+  primary: "bg-nirman-accent text-white hover:bg-nirman-accent-hover",
   secondary:
-    "bg-white text-nirman-text-primary border border-nirman-border shadow-subtle hover:bg-nirman-bg hover:border-nirman-text-muted/40",
+    "bg-white text-nirman-text-primary border border-nirman-border hover:bg-nirman-bg hover:border-[#d6d6d3]",
   outline:
     "bg-transparent text-nirman-text-primary border border-nirman-border hover:bg-nirman-bg",
   ghost:
-    "bg-transparent text-nirman-text-secondary hover:text-nirman-text-primary hover:bg-black/[0.04]",
-  danger:
-    "bg-nirman-danger text-white border border-transparent shadow-subtle hover:bg-red-700",
+    "bg-transparent text-nirman-text-secondary hover:text-nirman-text-primary hover:bg-black/[0.045]",
+  danger: "bg-nirman-danger text-white hover:bg-[#9f1f16]",
   subtle:
-    "bg-nirman-accent-light text-nirman-accent border border-transparent hover:bg-nirman-accent-subtle",
-  success:
-    "bg-nirman-success text-white border border-transparent shadow-subtle hover:bg-[#116b4a]",
+    "bg-nirman-accent-light text-nirman-accent hover:bg-nirman-accent-subtle",
+  success: "bg-nirman-success text-white hover:bg-[#186340]",
 };
 
 const SIZES: Record<ButtonSize, string> = {
-  sm: "h-8 px-3 text-xs gap-1.5",
-  md: "h-9 px-4 text-sm gap-2",
-  lg: "h-11 px-5 text-sm gap-2",
+  sm: "h-8 px-3 text-[13px] gap-1.5",
+  md: "h-9 px-3.5 text-sm gap-1.5",
+  lg: "h-10 px-4 text-sm gap-2",
   icon: "h-9 w-9",
   "icon-sm": "h-8 w-8",
 };
 
 const BASE =
-  "inline-flex select-none items-center justify-center whitespace-nowrap rounded-md font-medium transition-[background-color,border-color,color,box-shadow,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nirman-accent focus-visible:ring-offset-2 focus-visible:ring-offset-white active:translate-y-px disabled:pointer-events-none disabled:opacity-50";
+  "inline-flex select-none items-center justify-center whitespace-nowrap rounded-md font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nirman-accent focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:pointer-events-none disabled:opacity-45";
 
 export function buttonClasses(
   variant: ButtonVariant = "primary",

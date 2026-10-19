@@ -4,23 +4,12 @@ import * as React from "react";
 import { CandidateScoreResult, DecisionStatus } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button, ButtonLink } from "@/components/ui/Button";
-import { Badge, StatusBadge } from "@/components/ui/Badge";
+import { StatusBadge } from "@/components/ui/Badge";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Callout } from "@/components/ui/Callout";
 import { Progress } from "@/components/ui/Input";
 import { cn, formatYears } from "@/lib/utils";
-import {
-  AlertTriangle,
-  ArrowLeft,
-  BookOpen,
-  Check,
-  CheckCircle2,
-  FileText,
-  PauseCircle,
-  Save,
-  ThumbsDown,
-  XCircle,
-} from "lucide-react";
+import { ArrowLeft, Check, PauseCircle, ThumbsDown } from "lucide-react";
 
 interface CandidateDetailViewProps {
   candidate: CandidateScoreResult;
@@ -30,55 +19,6 @@ interface CandidateDetailViewProps {
     decision: DecisionStatus,
     notes?: string
   ) => void;
-}
-
-function ScoreTile({
-  label,
-  weightLabel,
-  value,
-  max,
-  tone = "accent",
-  footer,
-}: {
-  label: string;
-  weightLabel?: string;
-  value: number;
-  max: number;
-  tone?: "accent" | "success" | "warning";
-  footer?: React.ReactNode;
-}) {
-  return (
-    <Card className="p-5">
-      <div className="flex items-center justify-between">
-        <span className="text-2xs font-medium uppercase tracking-wide text-nirman-text-muted">
-          {label}
-        </span>
-        {weightLabel && (
-          <span className="font-mono text-2xs text-nirman-text-muted">
-            {weightLabel}
-          </span>
-        )}
-      </div>
-      <div className="mt-3 flex items-baseline gap-1.5">
-        <span className="tabular-nums text-2xl font-semibold tracking-tight text-nirman-dark">
-          {value}
-        </span>
-        <span className="text-2xs text-nirman-text-muted">/ {max}</span>
-      </div>
-      <Progress
-        value={max ? (value / max) * 100 : 0}
-        max={100}
-        tone={tone}
-        size="sm"
-        className="mt-3"
-      />
-      {footer && (
-        <p className="mt-2 text-2xs leading-relaxed text-nirman-text-secondary">
-          {footer}
-        </p>
-      )}
-    </Card>
-  );
 }
 
 export function CandidateDetailView({
@@ -111,33 +51,57 @@ export function CandidateDetailView({
       value: "shortlisted",
       label: "Shortlist",
       icon: Check,
-      activeClass: "bg-nirman-success text-white border-nirman-success hover:bg-[#116b4a]",
+      activeClass:
+        "bg-nirman-success text-white border-nirman-success hover:bg-[#186340]",
     },
     {
       value: "held",
       label: "Hold",
       icon: PauseCircle,
       activeClass:
-        "bg-nirman-warning text-white border-nirman-warning hover:bg-[#9a641a]",
+        "bg-nirman-warning text-white border-nirman-warning hover:bg-[#855900]",
     },
     {
       value: "not_recommended",
-      label: "Not Recommended",
+      label: "Not recommended",
       icon: ThumbsDown,
-      activeClass: "bg-nirman-danger text-white border-nirman-danger hover:bg-red-700",
+      activeClass:
+        "bg-nirman-danger text-white border-nirman-danger hover:bg-[#9f1f16]",
     },
   ];
 
+  const breakdown = [
+    {
+      label: "Required skills",
+      value: candidate.skillScore,
+      max: candidate.maxSkillScore,
+    },
+    {
+      label: "Experience",
+      value: candidate.experienceScore,
+      max: candidate.maxExperienceScore,
+    },
+    {
+      label: "Preferred skills",
+      value: candidate.preferredScore,
+      max: candidate.maxPreferredScore,
+    },
+    {
+      label: "Evidence quality",
+      value: candidate.evidenceScore,
+      max: candidate.maxEvidenceScore,
+    },
+  ];
+
+  const matchedCount = candidate.matches.filter((m) => m.matched).length;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHeader
-        breadcrumbs={[
-          { label: "Recruitment", href: "/recruitment" },
-          { label: "Screening", href: `/recruitment/${jobId}` },
-          { label: candidate.candidateName },
-        ]}
         title={candidate.candidateName}
-        description={`Screening evaluation · Candidate ${candidate.candidateId}`}
+        description={`${formatYears(candidate.calculatedExperienceYears)} experience · ${matchedCount} of ${
+          candidate.matches.length
+        } requirements met`}
         meta={
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={candidate.status} />
@@ -146,7 +110,7 @@ export function CandidateDetailView({
               href={`/recruitment/${jobId}`}
               variant="ghost"
               size="sm"
-              className="-ml-1.5 h-7 px-2 text-nirman-text-secondary"
+              className="-ml-2 h-7 px-2"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               Back to shortlist
@@ -154,7 +118,7 @@ export function CandidateDetailView({
           </div>
         }
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {decisions.map((d) => {
               const Icon = d.icon;
               const isActive = activeDecision === d.value;
@@ -165,10 +129,7 @@ export function CandidateDetailView({
                   variant="secondary"
                   onClick={() => handleDecision(d.value)}
                   aria-pressed={isActive}
-                  className={cn(
-                    isActive && d.activeClass,
-                    isActive && "shadow-subtle"
-                  )}
+                  className={cn(isActive && d.activeClass)}
                 >
                   <Icon className="h-3.5 w-3.5" />
                   {d.label}
@@ -181,160 +142,133 @@ export function CandidateDetailView({
 
       {savedSuccess && (
         <Callout tone="success" className="animate-fade-in">
-          Decision updated and recorded in the audit log.
+          Decision and notes saved.
         </Callout>
       )}
 
       {/* Score overview */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="p-5">
-          <div className="flex items-center justify-between">
-            <span className="text-2xs font-medium uppercase tracking-wide text-nirman-text-muted">
-              Overall Match
+      <Card>
+        <div className="grid grid-cols-1 gap-6 p-5 sm:grid-cols-[minmax(0,180px)_1fr] sm:gap-8">
+          <div>
+            <span className="block text-[13px] font-medium text-nirman-text-secondary">
+              Match score
             </span>
-            <Badge
-              variant={candidate.totalScore >= 80 ? "success" : "warning"}
+            <div className="mt-2 flex items-baseline gap-1">
+              <span className="tabular-nums text-[40px] font-semibold leading-none text-nirman-dark">
+                {Math.round(candidate.totalScore)}
+              </span>
+              <span className="text-sm text-nirman-text-muted">/ 100</span>
+            </div>
+            <Progress
+              value={candidate.totalScore}
+              max={100}
               size="sm"
-            >
-              Deterministic
-            </Badge>
+              tone="accent"
+              className="mt-4 max-w-[160px]"
+            />
+            <p className="mt-3 text-xs leading-relaxed text-nirman-text-muted">
+              Weighted across four components. Computed deterministically.
+            </p>
           </div>
-          <div className="mt-3 flex items-baseline gap-1.5">
-            <span className="tabular-nums text-3xl font-bold tracking-tight text-nirman-dark">
-              {Math.round(candidate.totalScore)}%
-            </span>
-            <span className="text-2xs text-nirman-text-muted">/ 100</span>
+
+          <div className="space-y-3 sm:border-l sm:border-nirman-border sm:pl-8">
+            {breakdown.map((item) => (
+              <div key={item.label} className="flex items-center gap-4">
+                <span className="w-32 shrink-0 text-[13px] text-nirman-text-secondary">
+                  {item.label}
+                </span>
+                <Progress
+                  value={item.max ? (item.value / item.max) * 100 : 0}
+                  max={100}
+                  size="sm"
+                  tone="accent"
+                  className="flex-1"
+                />
+                <span className="w-14 shrink-0 text-right tabular-nums text-[13px] text-nirman-text-primary">
+                  {item.value} / {item.max}
+                </span>
+              </div>
+            ))}
           </div>
-          <Progress
-            value={candidate.totalScore}
-            max={100}
-            size="sm"
-            tone="accent"
-            className="mt-3"
-          />
-          <p className="mt-2 text-2xs leading-relaxed text-nirman-text-secondary">
-            Composite of 4 weighted components.
-          </p>
-        </Card>
-
-        <ScoreTile
-          label="Required Skills"
-          weightLabel="Weight 50%"
-          value={candidate.skillScore}
-          max={candidate.maxSkillScore}
-          tone="accent"
-        />
-
-        <ScoreTile
-          label="Experience"
-          value={candidate.experienceScore}
-          max={candidate.maxExperienceScore}
-          weightLabel="Weight 25%"
-          tone="success"
-          footer={
-            <>
-              Verified{" "}
-              <span className="font-semibold text-nirman-dark">
-                {formatYears(candidate.calculatedExperienceYears)}
-              </span>{" "}
-              · Required {candidate.requiredExperienceYears}y+
-            </>
-          }
-        />
-
-        <ScoreTile
-          label="Preferred & Evidence"
-          weightLabel="Weight 25%"
-          value={candidate.preferredScore + candidate.evidenceScore}
-          max={candidate.maxPreferredScore + candidate.maxEvidenceScore}
-          tone="warning"
-          footer={`Preferred ${candidate.preferredScore}p + Resume evidence ${candidate.evidenceScore}p`}
-        />
-      </div>
+        </div>
+      </Card>
 
       {/* Requirement comparison */}
       <Card>
         <CardHeader>
           <div>
-            <CardTitle>Requirement-by-Requirement Comparison</CardTitle>
-            <p className="mt-0.5 text-xs text-nirman-text-secondary">
-              Alignment between role prerequisites and verified candidate
-              qualifications.
+            <CardTitle>Requirements</CardTitle>
+            <p className="mt-0.5 text-[13px] text-nirman-text-secondary">
+              Each row cites the candidate evidence behind the result.
             </p>
           </div>
-          <Badge variant="neutral" size="sm" mono>
-            {candidate.matches.filter((m) => m.matched).length}/
-            {candidate.matches.length} met
-          </Badge>
+          <span className="tabular-nums text-[13px] text-nirman-text-muted">
+            {matchedCount} / {candidate.matches.length} met
+          </span>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left text-xs">
+            <table className="w-full border-collapse text-left text-[13px]">
               <thead>
-                <tr className="border-b border-nirman-border bg-[#FAFAF8] text-nirman-text-secondary">
-                  <th scope="col" className="w-1/4 px-4 py-2.5 font-medium">
+                <tr className="border-b border-nirman-border bg-nirman-inset text-nirman-text-secondary">
+                  <th scope="col" className="w-1/4 px-5 py-2.5 font-medium">
                     Requirement
                   </th>
-                  <th scope="col" className="w-28 px-4 py-2.5 font-medium">
-                    Status
+                  <th scope="col" className="w-24 px-5 py-2.5 font-medium">
+                    Result
                   </th>
-                  <th scope="col" className="w-40 px-4 py-2.5 font-medium">
-                    Stated value
-                  </th>
-                  <th scope="col" className="px-4 py-2.5 font-medium">
-                    Evidence &amp; source
+                  <th scope="col" className="px-5 py-2.5 font-medium">
+                    Evidence
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-nirman-border">
                 {candidate.matches.map((item, idx) => (
-                  <tr key={idx} className="transition-colors hover:bg-nirman-bg/40">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2 font-medium text-nirman-dark">
-                        {item.matched ? (
-                          <CheckCircle2
-                            className="h-4 w-4 shrink-0 text-nirman-success"
-                            aria-hidden
-                          />
-                        ) : (
-                          <XCircle
-                            className="h-4 w-4 shrink-0 text-nirman-danger"
-                            aria-hidden
-                          />
-                        )}
-                        <span>{item.requirementName}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {item.matched ? (
-                        <Badge variant="success" size="sm" dot>
-                          Satisfied
-                        </Badge>
-                      ) : (
-                        <Badge variant="danger" size="sm" dot>
-                          Unmet
-                        </Badge>
+                  <tr key={idx} className="align-top">
+                    <td className="px-5 py-3.5">
+                      <span className="font-medium text-nirman-dark">
+                        {item.requirementName}
+                      </span>
+                      {item.candidateValue && (
+                        <span className="mt-0.5 block text-xs text-nirman-text-muted">
+                          Stated: {item.candidateValue}
+                        </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 font-mono text-2xs text-nirman-text-primary">
-                      {item.candidateValue || "Not listed"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="rounded-md border border-nirman-borderSubtle bg-nirman-bg/70 p-2.5 text-2xs text-nirman-text-secondary">
-                        <span className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-nirman-text-muted">
-                          <FileText className="h-3 w-3" aria-hidden />
-                          {item.sourceDocument || "Resume"}
-                        </span>
-                        {item.evidenceSnippet ? (
-                          <p className="italic leading-relaxed text-nirman-dark">
-                            “{item.evidenceSnippet}”
-                          </p>
-                        ) : (
-                          <p className="text-nirman-text-muted">
-                            No supporting citation available.
-                          </p>
+                    <td className="px-5 py-3.5">
+                      <span
+                        className={cn(
+                          "inline-flex items-center gap-1.5 text-xs font-medium",
+                          item.matched
+                            ? "text-nirman-success-text"
+                            : "text-nirman-danger-text"
                         )}
-                      </div>
+                      >
+                        <span
+                          className={cn(
+                            "h-1.5 w-1.5 rounded-full",
+                            item.matched
+                              ? "bg-nirman-success"
+                              : "bg-nirman-danger"
+                          )}
+                          aria-hidden
+                        />
+                        {item.matched ? "Met" : "Not found"}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      {item.evidenceSnippet ? (
+                        <p className="leading-relaxed text-nirman-text-secondary">
+                          “{item.evidenceSnippet}”
+                          <span className="ml-1.5 text-xs text-nirman-text-muted">
+                            {item.sourceDocument || "Resume"}
+                          </span>
+                        </p>
+                      ) : (
+                        <p className="text-nirman-text-muted">
+                          No supporting citation available.
+                        </p>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -348,97 +282,84 @@ export function CandidateDetailView({
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-nirman-warning" aria-hidden />
-              <CardTitle>Identified Requirement Gaps</CardTitle>
-            </div>
-            <Badge variant="neutral" size="sm" mono>
-              {candidate.gaps.length} detected
-            </Badge>
+            <CardTitle>Gaps</CardTitle>
+            <span className="tabular-nums text-[13px] text-nirman-text-muted">
+              {candidate.gaps.length} identified
+            </span>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="p-0">
             {candidate.gaps.length === 0 ? (
-              <Callout tone="success">
-                No critical gaps identified for this role specification.
-              </Callout>
+              <p className="px-5 py-6 text-[13px] text-nirman-text-secondary">
+                No requirement gaps identified for this role.
+              </p>
             ) : (
-              candidate.gaps.map((gap, i) => (
-                <div
-                  key={i}
-                  className="space-y-2 rounded-lg border border-nirman-border bg-[#FAFAF8] p-3.5"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-semibold text-nirman-dark">
-                      {gap.skill}
-                    </span>
-                    <Badge
-                      variant={gap.importance === "high" ? "danger" : "warning"}
-                      size="sm"
-                    >
-                      {gap.importance === "high" ? "High priority" : "Secondary"}
-                    </Badge>
-                  </div>
-                  <p className="text-2xs leading-relaxed text-nirman-text-secondary">
-                    <strong className="text-nirman-text-primary">
-                      Why it matters:
-                    </strong>{" "}
-                    {gap.whyItMatters}
-                  </p>
-                  <div className="flex items-start gap-1.5 rounded-md border border-nirman-border bg-white p-2 text-2xs leading-relaxed text-nirman-text-primary">
-                    <BookOpen
-                      className="mt-0.5 h-3.5 w-3.5 shrink-0 text-nirman-accent"
-                      aria-hidden
-                    />
-                    <span>
-                      <strong>Suggested direction:</strong>{" "}
-                      {gap.suggestedLearningDirection}
-                    </span>
-                  </div>
-                </div>
-              ))
+              <ul className="divide-y divide-nirman-border">
+                {candidate.gaps.map((gap, i) => (
+                  <li key={i} className="space-y-1.5 px-5 py-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[13px] font-medium text-nirman-dark">
+                        {gap.skill}
+                      </span>
+                      <span
+                        className={cn(
+                          "text-xs",
+                          gap.importance === "high"
+                            ? "text-nirman-danger-text"
+                            : "text-nirman-text-muted"
+                        )}
+                      >
+                        {gap.importance === "high" ? "High priority" : "Secondary"}
+                      </span>
+                    </div>
+                    <p className="text-[13px] leading-relaxed text-nirman-text-secondary">
+                      {gap.whyItMatters}
+                    </p>
+                    <p className="text-xs leading-relaxed text-nirman-text-muted">
+                      Next step: {gap.suggestedLearningDirection}
+                    </p>
+                  </li>
+                ))}
+              </ul>
             )}
           </CardContent>
         </Card>
 
         <Card className="flex flex-col">
           <CardHeader>
-            <CardTitle>Recruiter Review &amp; Notes</CardTitle>
-            <Badge variant="neutral" size="sm">
-              Human in the loop
-            </Badge>
+            <CardTitle>Review notes</CardTitle>
+            <span className="text-xs text-nirman-text-muted">Saved with your decision</span>
           </CardHeader>
           <CardContent className="flex flex-1 flex-col gap-4">
             <div className="flex-1">
               <label
                 htmlFor="recruiter-notes"
-                className="mb-1.5 block text-xs font-medium text-nirman-text-primary"
+                className="mb-1.5 block text-[13px] font-medium text-nirman-text-primary"
               >
-                Evaluation notes for the hiring committee
+                Notes for the hiring team
               </label>
               <textarea
                 id="recruiter-notes"
                 rows={6}
                 value={recruiterNotes}
                 onChange={(e) => setRecruiterNotes(e.target.value)}
-                placeholder="e.g. Strong in PostgreSQL & Python, but 2.4y experience requires a probe on independent system design in the tech screen."
-                className="w-full rounded-md border border-nirman-border bg-white p-3 text-xs leading-relaxed text-nirman-dark placeholder:text-nirman-text-muted focus:border-nirman-accent focus:outline-none focus:ring-2 focus:ring-nirman-accent/25"
+                placeholder="Record what you verified, what to probe in an interview, and why you reached this decision."
+                className="w-full rounded-md border border-nirman-border bg-white p-3 text-[13px] leading-relaxed text-nirman-dark placeholder:text-nirman-text-muted focus:border-nirman-accent focus:outline-none focus:ring-2 focus:ring-nirman-accent/20"
               />
             </div>
 
             <div className="flex items-center justify-between gap-3 border-t border-nirman-border pt-4">
-              <span className="text-2xs text-nirman-text-secondary">
-                Current state:{" "}
-                <strong className="capitalize text-nirman-dark">
+              <span className="text-xs text-nirman-text-muted">
+                Current decision:{" "}
+                <span className="capitalize text-nirman-text-secondary">
                   {activeDecision.replace("_", " ")}
-                </strong>
+                </span>
               </span>
               <Button
                 size="sm"
-                variant="primary"
+                variant="secondary"
                 onClick={() => handleDecision(activeDecision)}
               >
-                <Save className="h-3.5 w-3.5" />
-                Save Review Notes
+                Save notes
               </Button>
             </div>
           </CardContent>

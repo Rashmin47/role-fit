@@ -15,27 +15,27 @@ const TONE_MAP: Record<
   { wrap: string; icon: string; Icon: LucideIcon }
 > = {
   info: {
-    wrap: "bg-nirman-info-bg border-nirman-info-border text-nirman-info-text",
+    wrap: "bg-nirman-info-bg text-nirman-info-text",
     icon: "text-nirman-info",
     Icon: Info,
   },
   success: {
-    wrap: "bg-nirman-success-bg border-nirman-success-border text-nirman-success-text",
+    wrap: "bg-nirman-success-bg text-nirman-success-text",
     icon: "text-nirman-success",
     Icon: CheckCircle2,
   },
   warning: {
-    wrap: "bg-nirman-warning-bg border-nirman-warning-border text-nirman-warning-text",
+    wrap: "bg-nirman-warning-bg text-nirman-warning-text",
     icon: "text-nirman-warning",
     Icon: AlertTriangle,
   },
   danger: {
-    wrap: "bg-nirman-danger-bg border-nirman-danger-border text-nirman-danger-text",
+    wrap: "bg-nirman-danger-bg text-nirman-danger-text",
     icon: "text-nirman-danger",
     Icon: AlertCircle,
   },
   neutral: {
-    wrap: "bg-nirman-bg border-nirman-border text-nirman-text-secondary",
+    wrap: "bg-nirman-inset text-nirman-text-secondary",
     icon: "text-nirman-text-muted",
     Icon: Info,
   },
@@ -63,7 +63,7 @@ export function Callout({
     <div
       role={tone === "danger" || tone === "warning" ? "alert" : undefined}
       className={cn(
-        "flex items-start gap-2.5 rounded-md border px-3.5 py-3 text-xs leading-relaxed",
+        "flex items-start gap-2.5 rounded-md px-3.5 py-3 text-[13px] leading-relaxed",
         wrap,
         className
       )}

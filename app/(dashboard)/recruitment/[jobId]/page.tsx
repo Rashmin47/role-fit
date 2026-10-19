@@ -1,19 +1,10 @@
 "use client";
 
 import * as React from "react";
-import {
-  CheckCircle2,
-  Info,
-  Plus,
-  RotateCcw,
-  SlidersHorizontal,
-  Users,
-} from "lucide-react";
+import { Plus, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { StatCard } from "@/components/ui/StatCard";
 import { Callout } from "@/components/ui/Callout";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { CandidateTable } from "@/components/recruitment/CandidateTable";
@@ -33,11 +24,33 @@ const WEIGHT_FIELDS: Array<{
   min: number;
   max: number;
 }> = [
-  { key: "requiredSkills", label: "Required Skills", min: 20, max: 70 },
-  { key: "experience", label: "Experience Duration", min: 10, max: 50 },
-  { key: "preferredSkills", label: "Preferred Skills", min: 5, max: 30 },
-  { key: "evidenceQuality", label: "Evidence Quality", min: 0, max: 20 },
+  { key: "requiredSkills", label: "Required skills", min: 20, max: 70 },
+  { key: "experience", label: "Experience", min: 10, max: 50 },
+  { key: "preferredSkills", label: "Preferred skills", min: 5, max: 30 },
+  { key: "evidenceQuality", label: "Evidence quality", min: 0, max: 20 },
 ];
+
+function Metric({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: React.ReactNode;
+  hint: string;
+}) {
+  return (
+    <div className="px-5 py-4">
+      <span className="block text-[13px] font-medium text-nirman-text-secondary">
+        {label}
+      </span>
+      <span className="mt-1.5 block tabular-nums text-2xl font-semibold text-nirman-dark">
+        {value}
+      </span>
+      <span className="mt-1 block text-xs text-nirman-text-muted">{hint}</span>
+    </div>
+  );
+}
 
 export default function JobScreeningDetailPage({
   params,
@@ -57,17 +70,15 @@ export default function JobScreeningDetailPage({
     return (
       <div className="space-y-6">
         <PageHeader
-          eyebrow="Screening"
           title="Screening not found"
           description="This screening is not available in the current workspace. It may have been created in another browser profile."
         />
         <EmptyState
-          icon={Users}
           title="No matching screening"
           description="Open the recruitment workspace to choose an existing screening or create a new one."
           action={
             <ButtonLink href="/recruitment" size="sm">
-              Back to Recruitment
+              Back to recruitment
             </ButtonLink>
           }
           className="py-16"
@@ -97,48 +108,71 @@ export default function JobScreeningDetailPage({
   ).length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHeader
-        breadcrumbs={[
-          { label: "Recruitment", href: "/recruitment" },
-          { label: screening.title },
-        ]}
-        eyebrow="Screening"
         title={screening.title}
         description={`${screening.department} · ${screening.location} · Minimum ${screening.requirements.minimumExperienceYears} years experience`}
         actions={
           <>
             <Button
-              variant={showWeightsConfig ? "subtle" : "outline"}
+              variant="secondary"
               size="sm"
               onClick={() => setShowWeightsConfig((v) => !v)}
               aria-expanded={showWeightsConfig}
             >
-              <SlidersHorizontal className="h-3.5 w-3.5" />
-              Scoring Weights
+              <SlidersHorizontal className="h-4 w-4" />
+              Scoring weights
             </Button>
             <ButtonLink href="/recruitment/new" size="sm">
-              <Plus className="h-3.5 w-3.5" />
-              Add Candidates
+              <Plus className="h-4 w-4" />
+              New screening
             </ButtonLink>
           </>
         }
       />
 
+      <div className="grid grid-cols-2 divide-y divide-nirman-border overflow-hidden rounded-lg border border-nirman-border bg-white sm:grid-cols-4 sm:divide-y-0 sm:divide-x">
+        <Metric
+          label="Candidates"
+          value={screening.candidates.length}
+          hint="Evaluated by the pipeline"
+        />
+        <Metric
+          label="Strong matches"
+          value={strongMatchesCount}
+          hint="Meet the core specification"
+        />
+        <Metric
+          label="Review"
+          value={reviewCount}
+          hint="Minor gap identified"
+        />
+        <Metric
+          label="Shortlisted"
+          value={screening.shortlistedCount}
+          hint="Marked by a reviewer"
+        />
+      </div>
+
       {showWeightsConfig && (
-        <Card className="animate-slide-up border-nirman-accent/40">
+        <Card className="animate-slide-up">
           <CardHeader>
             <div>
-              <CardTitle>Deterministic Scoring Weights</CardTitle>
-              <p className="mt-0.5 text-xs text-nirman-text-secondary">
-                Adjust how many points each component contributes. The total must
-                equal 100.
+              <CardTitle>Scoring weights</CardTitle>
+              <p className="mt-0.5 text-[13px] text-nirman-text-secondary">
+                Adjust the contribution of each component. The total must equal 100.
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <Badge variant={weightsValid ? "success" : "danger"} size="sm" mono>
-                Total {weightsTotal}/100
-              </Badge>
+            <div className="flex items-center gap-3">
+              <span
+                className={
+                  weightsValid
+                    ? "tabular-nums text-[13px] font-medium text-nirman-text-secondary"
+                    : "tabular-nums text-[13px] font-medium text-nirman-danger-text"
+                }
+              >
+                {weightsTotal} / 100
+              </span>
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -146,7 +180,7 @@ export default function JobScreeningDetailPage({
                 aria-label="Reset weights to default"
                 title="Reset to defaults"
               >
-                <RotateCcw className="h-3.5 w-3.5" />
+                <RotateCcw className="h-4 w-4" />
               </Button>
             </div>
           </CardHeader>
@@ -154,15 +188,15 @@ export default function JobScreeningDetailPage({
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
               {WEIGHT_FIELDS.map((field) => (
                 <div key={field.key}>
-                  <div className="mb-1.5 flex items-center justify-between">
+                  <div className="mb-2 flex items-center justify-between">
                     <label
                       htmlFor={`weight-${field.key}`}
-                      className="text-xs font-medium text-nirman-text-primary"
+                      className="text-[13px] font-medium text-nirman-text-primary"
                     >
                       {field.label}
                     </label>
-                    <span className="tabular-nums font-mono text-xs font-semibold text-nirman-dark">
-                      {weights[field.key]} pts
+                    <span className="tabular-nums text-[13px] font-medium text-nirman-dark">
+                      {weights[field.key]}
                     </span>
                   </div>
                   <input
@@ -178,7 +212,7 @@ export default function JobScreeningDetailPage({
                         [field.key]: Number(e.target.value),
                       })
                     }
-                    className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-nirman-border accent-nirman-accent"
+                    className="h-1 w-full cursor-pointer appearance-none rounded-full bg-[#e6e6e4] accent-nirman-accent"
                   />
                 </div>
               ))}
@@ -208,61 +242,42 @@ export default function JobScreeningDetailPage({
                 onClick={handleApplyWeights}
                 disabled={!weightsValid}
               >
-                Recompute Match Scores
+                Recompute scores
               </Button>
             </div>
           </CardContent>
         </Card>
       )}
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard
-          label="Total Candidates"
-          value={screening.candidates.length}
-          hint="Evaluated by the pipeline"
-          icon={Users}
-          tone="accent"
-        />
-        <StatCard
-          label="Strong Matches"
-          value={strongMatchesCount}
-          hint="Meets core specifications"
-          icon={CheckCircle2}
-          tone="success"
-        />
-        <StatCard
-          label="Review Recommended"
-          value={reviewCount}
-          hint="Minor gap identified"
-          icon={Info}
-          tone="warning"
-        />
-        <StatCard
-          label="Shortlisted"
-          value={screening.shortlistedCount}
-          hint="Recruiter final call"
-          icon={CheckCircle2}
-        />
-      </div>
-
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-nirman-dark">
-            Screened Candidate Shortlist
-          </h2>
-          <span className="text-2xs text-nirman-text-muted">
-            Select a row or “Review” to inspect evidence citations
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold text-nirman-dark">Candidates</h2>
+          <span className="text-xs text-nirman-text-muted">
+            Open a candidate to inspect evidence and record a decision
           </span>
         </div>
 
-        <CandidateTable
-          candidates={screening.candidates}
-          jobId={screening.id}
-          onDecisionChange={(candidateId, decision) =>
-            updateCandidateDecision(screening.id, candidateId, decision)
-          }
-        />
-      </div>
+        {screening.candidates.length === 0 ? (
+          <EmptyState
+            title="No candidates yet"
+            description="Run a screening to evaluate candidates against this role."
+            action={
+              <ButtonLink href="/recruitment/new" size="sm">
+                <Plus className="h-4 w-4" />
+                New screening
+              </ButtonLink>
+            }
+          />
+        ) : (
+          <CandidateTable
+            candidates={screening.candidates}
+            jobId={screening.id}
+            onDecisionChange={(candidateId, decision) =>
+              updateCandidateDecision(screening.id, candidateId, decision)
+            }
+          />
+        )}
+      </section>
     </div>
   );
 }

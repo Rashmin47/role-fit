@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { Users } from "lucide-react";
 import { CandidateDetailView } from "@/components/recruitment/CandidateDetailView";
 import { ButtonLink } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -25,17 +24,15 @@ export default function CandidateDetailPage({
     return (
       <div className="space-y-6">
         <PageHeader
-          eyebrow="Candidate"
           title="Candidate not found"
           description="This candidate is not part of the selected screening in the current workspace."
         />
         <EmptyState
-          icon={Users}
           title="No matching candidate"
           description="Return to the screening shortlist to select a candidate."
           action={
             <ButtonLink href={`/recruitment/${jobId}`} size="sm">
-              Back to Screening
+              Back to screening
             </ButtonLink>
           }
           className="py-16"

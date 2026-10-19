@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
-import { Badge } from "@/components/ui/Badge";
 import { Callout } from "@/components/ui/Callout";
 import { WorkflowStatus, WorkflowStageItem } from "@/components/ui/WorkflowStatus";
 import { useScreeningStore } from "@/lib/store/screening-store";
@@ -21,14 +20,12 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
-  CheckCircle2,
-  Circle,
   FileText,
   Info,
   Loader2,
   Plus,
-  Trash2,
   UploadCloud,
+  X,
 } from "lucide-react";
 
 const SAMPLE_JOB_TEXT = `We are looking for a Python Backend Developer with 3+ years of professional experience building scalable web APIs.
@@ -79,10 +76,10 @@ const DEMO_RESUME_POOL = [
 ];
 
 const STEPS = [
-  { id: 1, label: "Job Details" },
-  { id: 2, label: "Structured Review" },
-  { id: 3, label: "Upload Resumes" },
-  { id: 4, label: "Deterministic Pipeline" },
+  { id: 1, label: "Job details" },
+  { id: 2, label: "Review requirements" },
+  { id: 3, label: "Add resumes" },
+  { id: 4, label: "Run screening" },
 ] as const;
 
 export function NewScreeningWorkflow() {
@@ -378,10 +375,25 @@ export function NewScreeningWorkflow() {
     }, 700);
   };
 
+  const requirementGroups = extractedRequirements
+    ? [
+        {
+          title: "Required",
+          items: extractedRequirements.requiredSkills,
+          isRequired: true,
+        },
+        {
+          title: "Preferred",
+          items: extractedRequirements.preferredSkills,
+          isRequired: false,
+        },
+      ]
+    : [];
+
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="space-y-6">
       {/* Stepper */}
-      <nav aria-label="Screening steps" className="border-b border-nirman-border pb-4">
+      <nav aria-label="Screening steps" className="border-b border-nirman-border pb-5">
         <ol className="flex items-center gap-2 overflow-x-auto no-scrollbar">
           {STEPS.map((s, index) => {
             const isActive = step === s.id;
@@ -391,22 +403,22 @@ export function NewScreeningWorkflow() {
                 <li className="flex shrink-0 items-center gap-2">
                   <span
                     className={cn(
-                      "flex h-6 w-6 items-center justify-center rounded-full border text-2xs font-semibold transition-colors",
+                      "flex h-5 w-5 items-center justify-center rounded-full border text-[12px] font-medium",
                       isDone &&
-                        "border-nirman-success bg-nirman-success text-white",
+                        "border-nirman-dark bg-nirman-dark text-white",
                       isActive &&
-                        "border-nirman-accent bg-nirman-accent-light text-nirman-accent",
-                      !isActive && !isDone && "border-nirman-border bg-white text-nirman-text-muted"
+                        "border-nirman-accent text-nirman-accent",
+                      !isActive && !isDone && "border-nirman-border text-nirman-text-muted"
                     )}
                     aria-hidden
                   >
-                    {isDone ? <Check className="h-3.5 w-3.5" /> : s.id}
+                    {isDone ? <Check className="h-3 w-3" /> : s.id}
                   </span>
                   <span
                     className={cn(
-                      "whitespace-nowrap text-xs font-medium",
+                      "whitespace-nowrap text-[13px]",
                       isActive
-                        ? "text-nirman-dark"
+                        ? "font-medium text-nirman-dark"
                         : isDone
                         ? "text-nirman-text-secondary"
                         : "text-nirman-text-muted"
@@ -419,7 +431,7 @@ export function NewScreeningWorkflow() {
                   <span
                     className={cn(
                       "h-px min-w-4 flex-1",
-                      step > s.id ? "bg-nirman-success/40" : "bg-nirman-border"
+                      step > s.id ? "bg-nirman-text-muted/40" : "bg-nirman-border"
                     )}
                     aria-hidden
                   />
@@ -435,10 +447,10 @@ export function NewScreeningWorkflow() {
         <Card>
           <CardHeader>
             <div>
-              <CardTitle>Define Job &amp; Extract Requirements</CardTitle>
-              <p className="mt-0.5 text-xs text-nirman-text-secondary">
-                AI parses the unstructured job description into a typed schema.
-                Scoring runs deterministically downstream.
+              <CardTitle>Job details</CardTitle>
+              <p className="mt-0.5 text-[13px] text-nirman-text-secondary">
+                The description is parsed into structured requirements. Scoring
+                happens separately.
               </p>
             </div>
           </CardHeader>
@@ -446,14 +458,14 @@ export function NewScreeningWorkflow() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div className="sm:col-span-2">
                 <Input
-                  label="Job Title"
+                  label="Job title"
                   value={jobTitle}
                   onChange={(e) => setJobTitle(e.target.value)}
                   placeholder="e.g. Python Backend Developer"
                 />
               </div>
               <Input
-                label="Min. Experience (years)"
+                label="Minimum experience (years)"
                 type="number"
                 min={0}
                 value={minExperience}
@@ -475,26 +487,25 @@ export function NewScreeningWorkflow() {
             </div>
 
             <Textarea
-              label="Job Description"
-              rows={7}
+              label="Job description"
+              rows={8}
               value={jobDescription}
               onChange={(e) => setJobDescription(e.target.value)}
               placeholder="Paste the full job description with requirements, technologies, and experience expectations…"
-              helperText="Use the sample description to see the extraction pipeline end to end."
             />
 
-            <div className="flex items-center justify-between">
+            <div>
               <button
                 type="button"
                 onClick={() => setJobDescription(SAMPLE_JOB_TEXT)}
-                className="text-2xs font-medium text-nirman-accent hover:text-nirman-accent-hover"
+                className="rounded-sm text-[13px] font-medium text-nirman-accent hover:text-nirman-accent-hover"
               >
-                Insert sample description
+                Use the sample description
               </button>
             </div>
 
             {isExtracting && (
-              <div className="animate-fade-in rounded-lg border border-nirman-border bg-[#FAFAF8] p-4">
+              <div className="animate-fade-in rounded-lg bg-nirman-inset p-4">
                 <WorkflowStatus
                   stages={workflowStages}
                   title="Extraction pipeline"
@@ -515,7 +526,7 @@ export function NewScreeningWorkflow() {
                   </>
                 ) : (
                   <>
-                    Analyze Requirements
+                    Extract requirements
                     <ArrowRight className="h-4 w-4" />
                   </>
                 )}
@@ -530,92 +541,65 @@ export function NewScreeningWorkflow() {
         <Card>
           <CardHeader className="flex-col items-start gap-3 sm:flex-row sm:items-center">
             <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <CardTitle>{extractedRequirements.title}</CardTitle>
-                <Badge variant="accent" size="sm">
-                  AI extracted · review
-                </Badge>
-              </div>
-              <p className="mt-0.5 text-xs text-nirman-text-secondary">
-                Verify and edit mandatory vs preferred requirements before
-                screening.
+              <CardTitle>Review requirements</CardTitle>
+              <p className="mt-0.5 text-[13px] text-nirman-text-secondary">
+                Confirm what is mandatory, what is preferred, and what to remove
+                before screening.
               </p>
             </div>
-            <Button size="sm" variant="outline" onClick={() => setStep(1)}>
-              <ArrowLeft className="h-3.5 w-3.5" /> Re-enter Job
+            <Button size="sm" variant="secondary" onClick={() => setStep(1)}>
+              <ArrowLeft className="h-4 w-4" /> Back
             </Button>
           </CardHeader>
-          <CardContent className="space-y-6">
-            {[
-              {
-                title: "Required",
-                hint: "Mandatory core skills",
-                items: extractedRequirements.requiredSkills,
-                isRequired: true,
-                tone: "success" as const,
-              },
-              {
-                title: "Preferred",
-                hint: "Nice-to-have capabilities",
-                items: extractedRequirements.preferredSkills,
-                isRequired: false,
-                tone: "accent" as const,
-              },
-            ].map((group) => (
-              <div key={group.title} className="space-y-2">
+          <CardContent className="space-y-7">
+            {requirementGroups.map((group) => (
+              <div key={group.title} className="space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.12em] text-nirman-text-secondary">
-                    {group.isRequired ? (
-                      <CheckCircle2 className="h-3.5 w-3.5 text-nirman-success" aria-hidden />
-                    ) : (
-                      <Circle className="h-3.5 w-3.5 text-nirman-accent" aria-hidden />
-                    )}
-                    {group.title} · {group.hint}
-                  </span>
-                  <span className="font-mono text-2xs text-nirman-text-muted">
-                    {group.items.length}
-                  </span>
+                  <h3 className="text-[13px] font-semibold text-nirman-dark">
+                    {group.title}{" "}
+                    <span className="font-normal text-nirman-text-muted">
+                      {group.items.length}
+                    </span>
+                  </h3>
                 </div>
 
-                <ul className="divide-y divide-nirman-border overflow-hidden rounded-lg border border-nirman-border bg-white">
+                <ul className="divide-y divide-nirman-border rounded-md border border-nirman-border">
                   {group.items.length === 0 && (
-                    <li className="px-3 py-4 text-center text-2xs text-nirman-text-muted">
+                    <li className="px-3 py-4 text-center text-[13px] text-nirman-text-muted">
                       No {group.title.toLowerCase()} requirements.
                     </li>
                   )}
                   {group.items.map((req) => (
                     <li
                       key={req.id}
-                      className="flex items-center justify-between gap-3 px-3 py-2.5 transition-colors hover:bg-nirman-bg/40"
+                      className="flex items-center justify-between gap-3 px-3 py-2.5"
                     >
                       <div className="min-w-0">
-                        <span className="text-xs font-medium text-nirman-dark">
+                        <span className="text-[13px] font-medium text-nirman-dark">
                           {req.name}
                         </span>
                         {req.extractedEvidence && (
-                          <span className="mt-0.5 block truncate text-2xs text-nirman-text-muted">
-                            Evidence: “{req.extractedEvidence}”
+                          <span className="mt-0.5 block truncate text-xs text-nirman-text-muted">
+                            “{req.extractedEvidence}”
                           </span>
                         )}
                       </div>
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 px-2 text-2xs"
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          type="button"
                           onClick={() => handleToggleImportance(req, group.isRequired)}
+                          className="rounded-sm px-2 py-1 text-xs text-nirman-text-secondary transition-colors hover:bg-black/[0.04] hover:text-nirman-dark"
                         >
-                          Make {group.isRequired ? "Preferred" : "Required"}
-                        </Button>
-                        <Button
-                          size="icon-sm"
-                          variant="ghost"
-                          className="text-nirman-danger hover:bg-nirman-danger-bg"
+                          Make {group.isRequired ? "preferred" : "required"}
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => handleRemoveRequirement(req.id, group.isRequired)}
                           aria-label={`Remove ${req.name}`}
+                          className="rounded-sm p-1 text-nirman-text-muted transition-colors hover:bg-nirman-danger-bg hover:text-nirman-danger-text"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                          <X className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     </li>
                   ))}
@@ -623,27 +607,29 @@ export function NewScreeningWorkflow() {
               </div>
             ))}
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="rounded-lg border border-nirman-border bg-[#FAFAF8] p-3.5">
-                <span className="mb-1 block text-2xs font-semibold uppercase tracking-wide text-nirman-text-muted">
+            <div className="grid grid-cols-1 gap-4 border-t border-nirman-border pt-5 sm:grid-cols-2">
+              <div>
+                <span className="block text-[13px] font-medium text-nirman-text-primary">
                   Experience requirement
                 </span>
-                <p className="text-xs text-nirman-text-secondary">
-                  <strong className="text-nirman-dark">
-                    {extractedRequirements.minimumExperienceYears}+ years
-                  </strong>{" "}
-                  relevant industry experience
+                <p className="mt-1 text-[13px] text-nirman-text-secondary">
+                  {extractedRequirements.minimumExperienceYears}+ years of relevant
+                  experience
                 </p>
               </div>
 
-              <div className="rounded-lg border border-nirman-border bg-[#FAFAF8] p-3.5">
-                <span className="mb-1.5 block text-2xs font-semibold uppercase tracking-wide text-nirman-text-muted">
-                  Add custom requirement
-                </span>
-                <div className="flex items-center gap-1.5">
+              <div>
+                <label
+                  htmlFor="custom-skill"
+                  className="mb-1.5 block text-[13px] font-medium text-nirman-text-primary"
+                >
+                  Add a requirement
+                </label>
+                <div className="flex items-center gap-2">
                   <input
+                    id="custom-skill"
                     type="text"
-                    placeholder="e.g. GraphQL, Kafka…"
+                    placeholder="e.g. GraphQL"
                     value={newSkillInput}
                     onChange={(e) => setNewSkillInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -652,23 +638,22 @@ export function NewScreeningWorkflow() {
                         handleAddCustomSkill();
                       }
                     }}
-                    aria-label="Add custom requirement"
-                    className="h-8 flex-1 rounded-md border border-nirman-border bg-white px-2 text-xs text-nirman-dark placeholder:text-nirman-text-muted focus:border-nirman-accent focus:outline-none focus:ring-2 focus:ring-nirman-accent/25"
+                    className="h-9 flex-1 rounded-md border border-nirman-border bg-white px-3 text-[13px] text-nirman-dark placeholder:text-nirman-text-muted focus:border-nirman-accent focus:outline-none focus:ring-2 focus:ring-nirman-accent/20"
                   />
                   <Button size="sm" variant="secondary" onClick={handleAddCustomSkill}>
-                    <Plus className="h-3 w-3" /> Add
+                    <Plus className="h-3.5 w-3.5" /> Add
                   </Button>
                 </div>
               </div>
             </div>
 
             <div className="flex items-center justify-between border-t border-nirman-border pt-4">
-              <span className="text-2xs text-nirman-text-secondary">
+              <span className="text-xs text-nirman-text-muted">
                 {extractedRequirements.requiredSkills.length} required ·{" "}
                 {extractedRequirements.preferredSkills.length} preferred
               </span>
               <Button variant="primary" onClick={() => setStep(3)}>
-                Confirm &amp; Continue
+                Continue
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
@@ -681,15 +666,14 @@ export function NewScreeningWorkflow() {
         <Card>
           <CardHeader className="flex-col items-start gap-3 sm:flex-row sm:items-center">
             <div>
-              <CardTitle>Upload Candidate Resumes</CardTitle>
-              <p className="mt-0.5 text-xs text-nirman-text-secondary">
-                Target role:{" "}
-                <strong className="text-nirman-dark">{jobTitle}</strong> (
-                {minExperience}+ years)
+              <CardTitle>Add resumes</CardTitle>
+              <p className="mt-0.5 text-[13px] text-nirman-text-secondary">
+                Screening against <strong className="font-medium text-nirman-dark">{jobTitle}</strong> ·{" "}
+                {minExperience}+ years
               </p>
             </div>
-            <Button size="sm" variant="outline" onClick={() => setStep(2)}>
-              <ArrowLeft className="h-3.5 w-3.5" /> Edit Requirements
+            <Button size="sm" variant="secondary" onClick={() => setStep(2)}>
+              <ArrowLeft className="h-4 w-4" /> Back
             </Button>
           </CardHeader>
           <CardContent className="space-y-5">
@@ -699,17 +683,14 @@ export function NewScreeningWorkflow() {
                 e.preventDefault();
                 handleFilesSelected(e.dataTransfer.files);
               }}
-              className="flex flex-col items-center rounded-xl border-2 border-dashed border-nirman-border bg-white p-8 text-center transition-colors hover:border-nirman-accent/60"
+              className="flex flex-col items-center rounded-lg border border-dashed border-nirman-border bg-nirman-inset px-6 py-10 text-center"
             >
-              <UploadCloud
-                className="mb-2 h-8 w-8 text-nirman-text-muted"
-                aria-hidden
-              />
-              <span className="text-xs font-semibold text-nirman-dark">
-                Drag &amp; drop resumes here
+              <UploadCloud className="mb-3 h-6 w-6 text-nirman-text-muted" aria-hidden />
+              <span className="text-[13px] font-medium text-nirman-dark">
+                Drop resumes here
               </span>
-              <span className="mt-1 text-2xs text-nirman-text-secondary">
-                PDF, DOCX, or TXT · supports 10–200+ files
+              <span className="mt-1 text-xs text-nirman-text-muted">
+                PDF, DOCX, or TXT
               </span>
 
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
@@ -721,9 +702,8 @@ export function NewScreeningWorkflow() {
                   <UploadCloud className="h-3.5 w-3.5" />
                   Browse files
                 </Button>
-                <Button size="sm" variant="secondary" onClick={loadSamplePool}>
-                  <FileText className="h-3.5 w-3.5" />
-                  Load 6 sample resumes
+                <Button size="sm" variant="ghost" onClick={loadSamplePool}>
+                  Use 6 sample resumes
                 </Button>
               </div>
 
@@ -741,29 +721,24 @@ export function NewScreeningWorkflow() {
             {uploadedFiles.length > 0 && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-nirman-dark">
-                    Staged resumes ({uploadedFiles.length})
-                  </span>
-                  <span className="font-mono text-2xs text-nirman-text-muted">
-                    Ready for batch evaluation
+                  <span className="text-[13px] font-medium text-nirman-dark">
+                    {uploadedFiles.length} documents staged
                   </span>
                 </div>
-                <ul className="max-h-44 space-y-1.5 overflow-y-auto pr-1">
+                <ul className="max-h-44 divide-y divide-nirman-border overflow-y-auto rounded-md border border-nirman-border">
                   {uploadedFiles.map((f, idx) => (
                     <li
                       key={idx}
-                      className="flex items-center justify-between gap-3 rounded-md border border-nirman-border bg-[#FAFAF8] px-3 py-2 text-xs"
+                      className="flex items-center justify-between gap-3 px-3 py-2 text-[13px]"
                     >
                       <span className="flex min-w-0 items-center gap-2">
                         <FileText
                           className="h-3.5 w-3.5 shrink-0 text-nirman-text-muted"
                           aria-hidden
                         />
-                        <span className="truncate font-medium text-nirman-dark">
-                          {f.name}
-                        </span>
+                        <span className="truncate text-nirman-dark">{f.name}</span>
                       </span>
-                      <span className="shrink-0 font-mono text-2xs text-nirman-text-muted">
+                      <span className="shrink-0 text-xs tabular-nums text-nirman-text-muted">
                         {f.size}
                       </span>
                     </li>
@@ -773,20 +748,20 @@ export function NewScreeningWorkflow() {
             )}
 
             <Callout tone="neutral" icon={Info}>
-              The demo pipeline evaluates the bundled sample candidate set. Wire an
-              extraction provider in Settings to process uploaded files.
+              This demo evaluates a bundled sample candidate set. Uploaded files are
+              staged but not parsed yet.
             </Callout>
 
             <div className="flex items-center justify-between border-t border-nirman-border pt-4">
-              <span className="text-2xs text-nirman-text-secondary">
-                {uploadedFiles.length} candidate documents staged
+              <span className="text-xs text-nirman-text-muted">
+                {uploadedFiles.length} staged
               </span>
               <Button
                 variant="primary"
                 onClick={handleRunScreening}
                 disabled={uploadedFiles.length === 0}
               >
-                Run Screening Pipeline
+                Run screening
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
@@ -799,17 +774,16 @@ export function NewScreeningWorkflow() {
         <Card>
           <CardHeader>
             <div>
-              <CardTitle>Processing Screening Pipeline</CardTitle>
-              <p className="mt-0.5 text-xs text-nirman-text-secondary">
-                Executing deterministic matching and score derivation across all
-                candidates.
+              <CardTitle>Running screening</CardTitle>
+              <p className="mt-0.5 text-[13px] text-nirman-text-secondary">
+                Matching and scoring every candidate deterministically.
               </p>
             </div>
           </CardHeader>
           <CardContent className="space-y-6 py-6">
-            <WorkflowStatus stages={screeningStages} title="Screening execution" />
-            <p className="text-center text-2xs text-nirman-text-secondary">
-              Redirecting to the explainable shortlist when complete…
+            <WorkflowStatus stages={screeningStages} title="Pipeline" />
+            <p className="text-center text-xs text-nirman-text-muted">
+              Redirecting to the shortlist when complete…
             </p>
           </CardContent>
         </Card>

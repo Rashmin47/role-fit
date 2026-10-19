@@ -11,7 +11,6 @@ export interface Breadcrumb {
 export interface PageHeaderProps {
   title: string;
   description?: React.ReactNode;
-  eyebrow?: string;
   breadcrumbs?: Breadcrumb[];
   actions?: React.ReactNode;
   /** Small inline meta row rendered under the description. */
@@ -22,21 +21,20 @@ export interface PageHeaderProps {
 export function PageHeader({
   title,
   description,
-  eyebrow,
   breadcrumbs,
   actions,
   meta,
   className,
 }: PageHeaderProps) {
   return (
-    <div className={cn("space-y-4", className)}>
+    <div className={cn("space-y-3", className)}>
       {breadcrumbs && breadcrumbs.length > 0 && (
         <nav aria-label="Breadcrumb">
-          <ol className="flex flex-wrap items-center gap-1 text-2xs text-nirman-text-muted">
+          <ol className="flex flex-wrap items-center gap-1.5 text-[13px] text-nirman-text-muted">
             {breadcrumbs.map((crumb, index) => {
               const isLast = index === breadcrumbs.length - 1;
               return (
-                <li key={`${crumb.label}-${index}`} className="flex items-center gap-1">
+                <li key={`${crumb.label}-${index}`} className="flex items-center gap-1.5">
                   {crumb.href && !isLast ? (
                     <Link
                       href={crumb.href}
@@ -46,19 +44,14 @@ export function PageHeader({
                     </Link>
                   ) : (
                     <span
-                      className={cn(
-                        isLast && "font-medium text-nirman-text-secondary"
-                      )}
+                      className={cn(isLast && "text-nirman-text-secondary")}
                       aria-current={isLast ? "page" : undefined}
                     >
                       {crumb.label}
                     </span>
                   )}
                   {!isLast && (
-                    <ChevronRight
-                      className="h-3 w-3 text-nirman-text-muted/70"
-                      aria-hidden
-                    />
+                    <ChevronRight className="h-3.5 w-3.5 text-nirman-text-muted/60" aria-hidden />
                   )}
                 </li>
               );
@@ -67,22 +60,17 @@ export function PageHeader({
         </nav>
       )}
 
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
         <div className="min-w-0">
-          {eyebrow && (
-            <div className="mb-1 text-2xs font-semibold uppercase tracking-[0.14em] text-nirman-accent">
-              {eyebrow}
-            </div>
-          )}
-          <h1 className="truncate text-xl font-semibold tracking-tight text-nirman-dark sm:text-2xl">
+          <h1 className="text-xl font-semibold text-nirman-dark sm:text-[22px]">
             {title}
           </h1>
           {description && (
-            <p className="mt-1 max-w-2xl text-xs leading-relaxed text-nirman-text-secondary sm:text-sm">
+            <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-nirman-text-secondary">
               {description}
             </p>
           )}
-          {meta && <div className="mt-2.5">{meta}</div>}
+          {meta && <div className="mt-3">{meta}</div>}
         </div>
 
         {actions && (

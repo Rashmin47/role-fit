@@ -10,7 +10,7 @@ export function scoreTone(score: number): "success" | "accent" | "warning" | "da
 
 const TONE_TEXT = {
   success: "text-nirman-success-text",
-  accent: "text-nirman-accent",
+  accent: "text-nirman-dark",
   warning: "text-nirman-warning-text",
   danger: "text-nirman-danger-text",
 } as const;
@@ -34,7 +34,8 @@ export interface ScoreMeterProps {
 
 /**
  * Consistent score representation used across tables and detail views:
- * a bold number coloured by band, paired with a proportional bar.
+ * a number paired with a proportional bar. Colour is reserved for the bar so
+ * a column of scores stays calm.
  */
 export function ScoreMeter({
   score,
@@ -47,29 +48,29 @@ export function ScoreMeter({
   const tone = scoreTone(clamped);
 
   return (
-    <div className={cn("flex items-center gap-2", className)}>
+    <div className={cn("flex items-center gap-2.5", className)}>
       {showValue && (
         <span
           className={cn(
-            "tabular-nums font-semibold",
-            size === "sm" ? "text-xs" : "text-sm",
+            "tabular-nums text-[13px] font-semibold",
             TONE_TEXT[tone]
           )}
         >
           {Math.round(clamped)}%
         </span>
       )}
-      {label && (
-        <span className="text-2xs text-nirman-text-muted">{label}</span>
-      )}
+      {label && <span className="text-xs text-nirman-text-muted">{label}</span>}
       <div
         className={cn(
-          "overflow-hidden rounded-full bg-nirman-border",
-          size === "sm" ? "h-1.5 w-14" : "h-2 w-20"
+          "overflow-hidden rounded-full bg-[#e6e6e4]",
+          size === "sm" ? "h-1.5 w-12" : "h-1.5 w-16"
         )}
       >
         <div
-          className={cn("h-full rounded-full transition-all duration-500 ease-out-quint", TONE_BG[tone])}
+          className={cn(
+            "h-full rounded-full transition-[width] duration-500 ease-out-quint",
+            TONE_BG[tone]
+          )}
           style={{ width: `${clamped}%` }}
         />
       </div>

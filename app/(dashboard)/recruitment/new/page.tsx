@@ -3,10 +3,9 @@ import { PageHeader } from "@/components/ui/PageHeader";
 
 export default function NewScreeningPage() {
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-3xl space-y-6">
       <PageHeader
-        eyebrow="Recruitment"
-        title="New Screening"
+        title="New screening"
         description="Extract role requirements, stage candidate resumes, and run deterministic scoring."
       />
       <NewScreeningWorkflow />

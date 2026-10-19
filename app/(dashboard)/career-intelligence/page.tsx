@@ -9,14 +9,13 @@ export default function CareerIntelligencePage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Career"
-        title="Career Intelligence"
-        description="Understand what employers actually ask for across verified job market datasets."
+        title="Career intelligence"
+        description="See which skills, experience levels, and technologies employers actually ask for. Sample dataset."
       />
 
       <div>
-        <p className="mb-2 block text-2xs font-semibold uppercase tracking-wide text-nirman-text-muted">
-          Select a target engineering role
+        <p className="mb-2 text-[13px] font-medium text-nirman-text-secondary">
+          Target role
         </p>
         <RoleSelector activeRoleId="python-backend-developer" />
       </div>

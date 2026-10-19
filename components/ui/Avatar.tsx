@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 
 const TONES = {
   accent: "bg-nirman-accent-light text-nirman-accent",
-  neutral: "bg-[#F2F4F7] text-nirman-text-secondary",
+  neutral: "bg-[#f2f2f1] text-nirman-text-secondary",
   dark: "bg-nirman-dark text-white",
   success: "bg-nirman-success-bg text-nirman-success-text",
 } as const;
@@ -32,8 +32,8 @@ export function Avatar({
     <span
       aria-hidden
       className={cn(
-        "inline-flex shrink-0 select-none items-center justify-center rounded-full font-semibold",
-        size === "sm" && "h-7 w-7 text-2xs",
+        "inline-flex shrink-0 select-none items-center justify-center rounded-full font-medium",
+        size === "sm" && "h-7 w-7 text-[12px]",
         size === "md" && "h-9 w-9 text-xs",
         size === "lg" && "h-11 w-11 text-sm",
         TONES[tone],

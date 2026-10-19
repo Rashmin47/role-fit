@@ -3,11 +3,11 @@ import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const LABEL_CLASS =
-  "block text-xs font-medium text-nirman-text-primary mb-1.5";
+  "block text-[13px] font-medium text-nirman-text-primary mb-1.5";
 const FIELD_CLASS =
-  "flex w-full rounded-md border border-nirman-border bg-white px-3 text-sm text-nirman-dark shadow-subtle placeholder:text-nirman-text-muted transition-colors focus:border-nirman-accent focus:outline-none focus:ring-2 focus:ring-nirman-accent/25 disabled:cursor-not-allowed disabled:bg-nirman-bg/60 disabled:opacity-60";
+  "flex w-full rounded-md border border-nirman-border bg-white px-3 text-sm text-nirman-dark shadow-subtle placeholder:text-nirman-text-muted transition-colors focus:border-nirman-accent focus:outline-none focus:ring-2 focus:ring-nirman-accent/20 disabled:cursor-not-allowed disabled:bg-nirman-bg/60 disabled:opacity-60";
 const ERROR_FIELD_CLASS =
-  "border-nirman-danger focus:border-nirman-danger focus:ring-nirman-danger/25";
+  "border-nirman-danger focus:border-nirman-danger focus:ring-nirman-danger/20";
 
 function FieldFooter({
   error,
@@ -17,11 +17,11 @@ function FieldFooter({
   helperText?: string;
 }) {
   if (error) {
-    return <p className="mt-1 text-2xs text-nirman-danger">{error}</p>;
+    return <p className="mt-1.5 text-xs text-nirman-danger-text">{error}</p>;
   }
   if (helperText) {
     return (
-      <p className="mt-1 text-2xs text-nirman-text-secondary">{helperText}</p>
+      <p className="mt-1.5 text-xs text-nirman-text-muted">{helperText}</p>
     );
   }
   return null;
@@ -72,10 +72,7 @@ export interface TextareaProps
 }
 
 export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
-  (
-    { className, label, error, helperText, id, rows = 4, ...props },
-    ref
-  ) => {
+  ({ className, label, error, helperText, id, rows = 4, ...props }, ref) => {
     const textareaId =
       id || (label ? label.toLowerCase().replace(/\s+/g, "-") : undefined);
 
@@ -191,7 +188,7 @@ export function Progress({
       aria-valuemin={0}
       aria-valuemax={100}
       className={cn(
-        "relative w-full overflow-hidden rounded-full bg-nirman-border",
+        "relative w-full overflow-hidden rounded-full bg-[#e6e6e4]",
         size === "sm" ? "h-1.5" : "h-2",
         className
       )}
