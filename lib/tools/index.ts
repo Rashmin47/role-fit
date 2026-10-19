@@ -1,12 +1,11 @@
 /**
- * Nirman Tool & Function Calling Registry
+ * Role Fit Tool & Function Calling Registry
  * Exposes deterministic internal tools callable by local AI providers and pipeline stages.
  * Zero LangChain bloat — lightweight, strongly-typed internal functions.
  */
 
-import { normalizeSkillName, matchSkills } from "../normalization/skills";
+import { normalizeSkillName } from "../normalization/skills";
 import { SAMPLE_CAREER_ROLES } from "../data/sample-data";
-import { calculateFinalMatchScore, DEFAULT_SCORING_WEIGHTS } from "../scoring";
 
 export interface ToolDefinition {
   name: string;
@@ -41,7 +40,7 @@ export class ToolRegistry {
   async execute(name: string, args: any): Promise<any> {
     const tool = this.tools.get(name);
     if (!tool) {
-      throw new Error(`Tool '${name}' not found in Nirman Tool Registry.`);
+      throw new Error(`Tool '${name}' not found in Role Fit Tool Registry.`);
     }
     return await tool.handler(args);
   }

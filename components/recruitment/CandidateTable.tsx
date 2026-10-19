@@ -28,6 +28,25 @@ interface CandidateTableProps {
 
 type SortField = "totalScore" | "calculatedExperienceYears";
 
+function SortIcon({
+  field,
+  sortField,
+  sortAsc,
+}: {
+  field: SortField;
+  sortField: SortField;
+  sortAsc: boolean;
+}) {
+  if (sortField !== field) {
+    return <ArrowUpDown className="h-3 w-3 text-nirman-text-muted" aria-hidden />;
+  }
+  return sortAsc ? (
+    <ArrowUp className="h-3 w-3 text-nirman-accent" aria-hidden />
+  ) : (
+    <ArrowDown className="h-3 w-3 text-nirman-accent" aria-hidden />
+  );
+}
+
 export function CandidateTable({
   candidates,
   jobId,
@@ -76,16 +95,6 @@ export function CandidateTable({
       setSortField(field);
       setSortAsc(false);
     }
-  };
-
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field)
-      return <ArrowUpDown className="h-3 w-3 text-nirman-text-muted" aria-hidden />;
-    return sortAsc ? (
-      <ArrowUp className="h-3 w-3 text-nirman-accent" aria-hidden />
-    ) : (
-      <ArrowDown className="h-3 w-3 text-nirman-accent" aria-hidden />
-    );
   };
 
   return (
@@ -145,7 +154,12 @@ export function CandidateTable({
                   onClick={() => toggleSort("totalScore")}
                   className="inline-flex items-center gap-1.5 rounded-sm transition-colors hover:text-nirman-dark"
                 >
-                  Match Score <SortIcon field="totalScore" />
+                  Match Score{" "}
+                  <SortIcon
+                    field="totalScore"
+                    sortField={sortField}
+                    sortAsc={sortAsc}
+                  />
                 </button>
               </th>
               <th scope="col" className="px-4 py-3 font-medium">
@@ -154,7 +168,12 @@ export function CandidateTable({
                   onClick={() => toggleSort("calculatedExperienceYears")}
                   className="inline-flex items-center gap-1.5 rounded-sm transition-colors hover:text-nirman-dark"
                 >
-                  Experience <SortIcon field="calculatedExperienceYears" />
+                  Experience{" "}
+                  <SortIcon
+                    field="calculatedExperienceYears"
+                    sortField={sortField}
+                    sortAsc={sortAsc}
+                  />
                 </button>
               </th>
               <th scope="col" className="px-4 py-3 font-medium">

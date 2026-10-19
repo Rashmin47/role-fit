@@ -1,5 +1,5 @@
 /**
- * Nirman Matching Engine Foundation
+ * Role Fit Matching Engine Foundation
  * Pure deterministic alignment between StructuredJobRequirements and CandidateProfile.
  */
 

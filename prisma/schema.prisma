@@ -1,10 +1,10 @@
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "./generated"
 }
 
 datasource db {
   provider = "sqlite"
-  url      = env("DATABASE_URL")
 }
 
 model Organization {
@@ -155,16 +155,16 @@ model ScoringRun {
 }
 
 model CandidateProcessingJob {
-  id           String      @id @default(cuid())
-  scoringRunId String
-  scoringRun   ScoringRun  @relation(fields: [scoringRunId], references: [id], onDelete: Cascade)
+  id            String     @id @default(cuid())
+  scoringRunId  String
+  scoringRun    ScoringRun @relation(fields: [scoringRunId], references: [id], onDelete: Cascade)
   candidateName String
-  status       String      @default("QUEUED") // QUEUED, PROCESSING, COMPLETED, FAILED
-  score        Float?
-  routingState String?
-  errorMessage String?
-  startedAt    DateTime?
-  completedAt  DateTime?
+  status        String     @default("QUEUED") // QUEUED, PROCESSING, COMPLETED, FAILED
+  score         Float?
+  routingState  String?
+  errorMessage  String?
+  startedAt     DateTime?
+  completedAt   DateTime?
 }
 
 model Skill {
@@ -197,29 +197,29 @@ model JobPosting {
 }
 
 model EvidenceSource {
-  id           String      @id @default(cuid())
+  id           String     @id @default(cuid())
   jobPostingId String
-  jobPosting   JobPosting  @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
+  jobPosting   JobPosting @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
   url          String?
   title        String
-  collectedAt  DateTime    @default(now())
+  collectedAt  DateTime   @default(now())
 }
 
 model MarketRoleData {
-  id                     String   @id @default(cuid())
-  roleKey                String   @unique // python-backend-developer, frontend-developer, etc.
-  title                  String
-  totalPostingsAnalyzed  Int
-  requirementsJson       String   // JSON array of MarketRequirementStat
-  experienceJson         String   // JSON array of ExperienceDistribution
-  prioritiesJson         String   // JSON object with high, medium, emerging
-  lastUpdated            DateTime @default(now())
+  id                    String   @id @default(cuid())
+  roleKey               String   @unique // python-backend-developer, frontend-developer, etc.
+  title                 String
+  totalPostingsAnalyzed Int
+  requirementsJson      String   // JSON array of MarketRequirementStat
+  experienceJson        String   // JSON array of ExperienceDistribution
+  prioritiesJson        String   // JSON object with high, medium, emerging
+  lastUpdated           DateTime @default(now())
 }
 
 model Company {
-  id                    String   @id @default(cuid())
-  name                  String   @unique
-  industry              String
-  observedDataJson      String   // JSON array of ObservedCompanyRequirement
-  createdAt             DateTime @default(now())
+  id               String   @id @default(cuid())
+  name             String   @unique
+  industry         String
+  observedDataJson String   // JSON array of ObservedCompanyRequirement
+  createdAt        DateTime @default(now())
 }

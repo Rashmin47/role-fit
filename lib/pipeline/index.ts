@@ -1,39 +1,37 @@
 /**
- * Nirman Multi-Step Pipeline Coordinator
- * Integrates: Unstructured Text -> AI Extraction -> Normalization -> Retrieval -> Matching -> Scoring -> Routing -> Human Decision
+ * Role Fit multi-step pipeline coordinator.
+ *
+ * Stage 1: AI/provider extraction of structured requirements.
+ * Stage 2: retrieval grounding against observed market postings.
+ *
+ * Matching, scoring, and routing are intentionally *not* performed here: they
+ * are pure functions in `lib/matching`, `lib/scoring`, and `lib/routing`, and
+ * are composed by the batch pipeline.
  */
 
 import { getAIProvider, StructuredJobRequirements } from "../ai/provider";
-import { evaluateCandidateMatch, CandidateMatchResult } from "../matching";
-import { calculateFinalMatchScore, DEFAULT_SCORING_WEIGHTS } from "../scoring";
-import { determineCandidateRouting, RoutingDecision } from "../routing";
 import { retrieveRelevantJobPostings } from "../retrieval";
-
-export interface PipelineExecutionResult {
-  stage: "EXTRACTED" | "MATCHED" | "SCORED" | "ROUTED";
-  jobRequirements: StructuredJobRequirements;
-  candidatesCount: number;
-  durationMs: number;
-}
 
 export async function runJobAnalysisPipeline(
   jobTitle: string,
   rawDescription: string
 ): Promise<StructuredJobRequirements> {
-  const startTime = Date.now();
   const provider = getAIProvider();
 
-  // Stage 1: AI Structured Extraction
-  const extracted = await provider.extractJobRequirements(jobTitle, rawDescription);
+  const extracted = await provider.extractJobRequirements(
+    jobTitle,
+    rawDescription
+  );
 
-  // Stage 2: Grounding & Retrieval Verification
   const relevantMarketPostings = await retrieveRelevantJobPostings(
     extracted.title,
-    extracted.requiredSkills.map((r) => r.name)
+    extracted.requiredSkills.map((requirement) => requirement.name)
   );
 
   return {
     ...extracted,
-    summary: extracted.summary || `Extracted requirements grounded against ${relevantMarketPostings.length} market observations.`,
+    summary:
+      extracted.summary ||
+      `Extracted requirements grounded against ${relevantMarketPostings.length} market observations.`,
   };
 }

@@ -15,18 +15,10 @@ import { useScreeningStore } from "@/lib/store/screening-store";
 import { formatYears } from "@/lib/utils";
 import type { CandidateScoreResult } from "@/types";
 
-function CandidatesDirectory() {
+function CandidatesDirectory({ initialQuery }: { initialQuery: string }) {
   const { screenings } = useScreeningStore();
-  const searchParams = useSearchParams();
-  const [searchTerm, setSearchTerm] = React.useState(
-    searchParams.get("q") ?? ""
-  );
+  const [searchTerm, setSearchTerm] = React.useState(initialQuery);
   const [statusFilter, setStatusFilter] = React.useState("all");
-
-  React.useEffect(() => {
-    const q = searchParams.get("q");
-    if (q) setSearchTerm(q);
-  }, [searchParams]);
 
   const allCandidates = React.useMemo(() => {
     const list: Array<{
@@ -197,10 +189,19 @@ function CandidatesDirectory() {
   );
 }
 
+function CandidatesDirectoryWithParams() {
+  const searchParams = useSearchParams();
+  const query = searchParams.get("q") ?? "";
+
+  // Remount when the URL query changes so state is derived, not synced in an
+  // effect. This also makes browser back/forward navigation behave correctly.
+  return <CandidatesDirectory key={query} initialQuery={query} />;
+}
+
 export default function CandidatesDirectoryPage() {
   return (
     <React.Suspense fallback={null}>
-      <CandidatesDirectory />
+      <CandidatesDirectoryWithParams />
     </React.Suspense>
   );
 }

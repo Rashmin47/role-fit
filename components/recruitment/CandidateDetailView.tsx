@@ -89,7 +89,9 @@ export function CandidateDetailView({
   const [activeDecision, setActiveDecision] = React.useState<DecisionStatus>(
     candidate.decision
   );
-  const [recruiterNotes, setRecruiterNotes] = React.useState<string>("");
+  const [recruiterNotes, setRecruiterNotes] = React.useState<string>(
+    candidate.reviewNotes ?? ""
+  );
   const [savedSuccess, setSavedSuccess] = React.useState<boolean>(false);
 
   const handleDecision = (decision: DecisionStatus) => {

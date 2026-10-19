@@ -1,5 +1,5 @@
 /**
- * Nirman Normalization Engine
+ * Role Fit Normalization Engine
  * Maps raw variations of skills, technologies, and titles into canonical records.
  */
 

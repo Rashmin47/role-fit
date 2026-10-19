@@ -1,9 +1,9 @@
 /**
- * Nirman Retrieval & RAG Foundation
+ * Role Fit Retrieval & RAG Foundation
  * Grounds AI reasoning and market intelligence on structured, verifiable job postings.
  */
 
-import { SAMPLE_CAREER_ROLES, SAMPLE_COMPANIES } from "../data/sample-data";
+import { SAMPLE_CAREER_ROLES } from "../data/sample-data";
 
 export interface RetrievedJobPosting {
   id: string;

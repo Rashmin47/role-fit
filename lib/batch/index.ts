@@ -1,5 +1,5 @@
 /**
- * Nirman Batch Processing Architecture
+ * Role Fit Batch Processing Architecture
  * Coordinates scalable screening runs across batches of 10 to 200+ resumes.
  * Processes each candidate independently to prevent monolithic context exhaustion.
  */

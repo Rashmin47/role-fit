@@ -1,5 +1,5 @@
 /**
- * Nirman Routing & Decision Engine
+ * Role Fit Routing & Decision Engine
  * Pure application logic for triaging candidates into actionable recruiter queues.
  * NO AUTOMATIC REJECTION. Human recruiters make the final decision.
  */

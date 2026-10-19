@@ -1,5 +1,5 @@
 /**
- * Nirman AI Provider Factory & Base Interfaces
+ * Role Fit AI Provider Factory & Base Interfaces
  * Supports Ollama open-weight LLMs and local offline deterministic extraction.
  * ZERO proprietary cloud LLM APIs.
  */

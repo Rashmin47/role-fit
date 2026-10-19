@@ -68,11 +68,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const searchRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [pathname]);
-
-  // Cmd/Ctrl + K focuses the global search.
-  React.useEffect(() => {
+    // Cmd/Ctrl + K focuses the global search.
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -88,9 +84,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const handleSearch = (event: React.FormEvent) => {
     event.preventDefault();
+    setMobileMenuOpen(false);
     const query = searchQuery.trim();
     router.push(query ? `/candidates?q=${encodeURIComponent(query)}` : "/candidates");
   };
+
+  const closeMobileMenu = () => setMobileMenuOpen(false);
 
   return (
     <div className="flex min-h-screen bg-nirman-bg text-nirman-dark">
@@ -123,6 +122,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="flex h-14 items-center justify-between border-b border-white/10 px-4">
           <Link
             href="/dashboard"
+            onClick={closeMobileMenu}
             className="group flex items-center gap-2.5 rounded-md focus-visible:outline-none"
           >
             <span className="flex h-7 w-7 items-center justify-center rounded-md bg-nirman-accent text-sm font-bold text-white shadow-subtle">
@@ -175,6 +175,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.name}
                 href={item.href}
+                onClick={closeMobileMenu}
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
                   "group relative flex items-center gap-2.5 rounded-md px-3 py-2 text-xs font-medium transition-colors",

@@ -25,16 +25,26 @@ import { useScreeningStore } from "@/lib/store/screening-store";
 import { SAMPLE_CAREER_ROLES } from "@/lib/data/sample-data";
 import { formatYears } from "@/lib/utils";
 
+const subscribeToClock = () => () => {};
+
+function getGreeting() {
+  const hour = new Date().getHours();
+  return hour < 12
+    ? "Good morning"
+    : hour < 18
+    ? "Good afternoon"
+    : "Good evening";
+}
+
 export default function DashboardPage() {
   const { screenings } = useScreeningStore();
-  const [greeting, setGreeting] = React.useState("Welcome back");
-
-  React.useEffect(() => {
-    const hour = new Date().getHours();
-    setGreeting(
-      hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"
-    );
-  }, []);
+  // Server snapshot stays generic so hydration is deterministic; the client
+  // snapshot upgrades to a time-aware greeting after hydration.
+  const greeting = React.useSyncExternalStore(
+    subscribeToClock,
+    getGreeting,
+    () => "Welcome back"
+  );
 
   const totalCandidates = screenings.reduce((acc, s) => acc + s.candidateCount, 0);
   const pendingReviewCandidates = screenings

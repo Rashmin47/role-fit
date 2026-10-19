@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { notFound } from "next/navigation";
 import {
   CheckCircle2,
   Info,
@@ -16,6 +15,7 @@ import { Badge } from "@/components/ui/Badge";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { Callout } from "@/components/ui/Callout";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { CandidateTable } from "@/components/recruitment/CandidateTable";
 import { useScreeningStore } from "@/lib/store/screening-store";
 import { ScoringWeights } from "@/types";
@@ -42,18 +42,38 @@ const WEIGHT_FIELDS: Array<{
 export default function JobScreeningDetailPage({
   params,
 }: {
-  params: { jobId: string };
+  params: Promise<{ jobId: string }>;
 }) {
+  const { jobId } = React.use(params);
   const { screenings, updateCandidateDecision, recomputeScoresWithWeights } =
     useScreeningStore();
 
-  const screening = screenings.find((s) => s.id === params.jobId) || screenings[0];
+  const screening = screenings.find((s) => s.id === jobId);
 
   const [showWeightsConfig, setShowWeightsConfig] = React.useState(false);
   const [weights, setWeights] = React.useState<ScoringWeights>(DEFAULT_WEIGHTS);
 
   if (!screening) {
-    return notFound();
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          eyebrow="Screening"
+          title="Screening not found"
+          description="This screening is not available in the current workspace. It may have been created in another browser profile."
+        />
+        <EmptyState
+          icon={Users}
+          title="No matching screening"
+          description="Open the recruitment workspace to choose an existing screening or create a new one."
+          action={
+            <ButtonLink href="/recruitment" size="sm">
+              Back to Recruitment
+            </ButtonLink>
+          }
+          className="py-16"
+        />
+      </div>
+    );
   }
 
   const weightsTotal =

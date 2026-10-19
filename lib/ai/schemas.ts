@@ -1,5 +1,5 @@
 /**
- * Nirman AI Structured Schemas
+ * Role Fit AI Structured Schemas
  * Type definitions, validators, and contract schemas for AI outputs.
  */
 

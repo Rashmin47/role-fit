@@ -5,8 +5,13 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { SAMPLE_CAREER_ROLES } from "@/lib/data/sample-data";
 import { Compass } from "lucide-react";
 
-export default function RoleDetailPage({ params }: { params: { role: string } }) {
-  const roleData = SAMPLE_CAREER_ROLES[params.role];
+export default async function RoleDetailPage({
+  params,
+}: {
+  params: Promise<{ role: string }>;
+}) {
+  const { role } = await params;
+  const roleData = SAMPLE_CAREER_ROLES[role];
 
   if (!roleData) {
     return (
@@ -39,7 +44,7 @@ export default function RoleDetailPage({ params }: { params: { role: string } })
         <p className="mb-2 block text-2xs font-semibold uppercase tracking-wide text-nirman-text-muted">
           Select a target engineering role
         </p>
-        <RoleSelector activeRoleId={params.role} />
+        <RoleSelector activeRoleId={role} />
       </div>
 
       <MarketRequirementsView role={roleData} />

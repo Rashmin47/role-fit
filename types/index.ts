@@ -119,6 +119,10 @@ export interface CandidateScoreResult {
   requiredExperienceYears: number;
   status: MatchStatus;
   decision: DecisionStatus;
+  /** Recruiter notes captured in the detail view. */
+  reviewNotes?: string;
+  /** ISO timestamp of the last human decision. */
+  reviewedAt?: string;
   matches: MatchEvidence[];
   gaps: SkillGap[];
   scoringWeights: ScoringWeights;

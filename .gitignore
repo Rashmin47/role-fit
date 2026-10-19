@@ -34,3 +34,6 @@ prisma/dev.db-journal
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# prisma generated client (Prisma ORM 7)
+prisma/generated/

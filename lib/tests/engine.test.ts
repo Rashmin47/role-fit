@@ -1,5 +1,5 @@
 /**
- * Nirman Core Logic Automated Test Suite
+ * Role Fit Core Logic Automated Test Suite
  * Validates normalization, deterministic scoring, matching, routing, and AI schema validation.
  */
 
@@ -12,12 +12,11 @@ import {
   calculateFinalMatchScore,
   DEFAULT_SCORING_WEIGHTS,
 } from "../scoring";
-import { evaluateCandidateMatch } from "../matching";
 import { determineCandidateRouting } from "../routing";
 import { validateJobRequirementsOutput } from "../ai/schemas";
 
 function runTests() {
-  console.log("🧪 Running Nirman Engine Automated Test Suite...\n");
+  console.log("🧪 Running Role Fit Engine Automated Test Suite...\n");
   let passed = 0;
   let failed = 0;
 

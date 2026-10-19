@@ -26,7 +26,6 @@ export default function RecruitmentWorkspacePage() {
           </ButtonLink>
         }
       />
-
       {screenings.length === 0 ? (
         <EmptyState
           icon={Briefcase}
@@ -49,6 +48,12 @@ export default function RecruitmentWorkspacePage() {
             const reviewPct = Math.round(
               (screening.reviewedCount / (screening.candidateCount || 1)) * 100
             );
+            const statusMeta = {
+              ready: { label: "Active", variant: "success" as const },
+              draft: { label: "Draft", variant: "neutral" as const },
+              extracting: { label: "Extracting", variant: "warning" as const },
+              completed: { label: "Completed", variant: "info" as const },
+            }[screening.status];
 
             return (
               <Card key={screening.id} className="flex flex-col">
@@ -64,8 +69,12 @@ export default function RecruitmentWorkspacePage() {
                       </span>
                     </div>
                   </div>
-                  <Badge variant="success" size="sm" dot>
-                    Active
+                  <Badge
+                    variant={statusMeta.variant}
+                    size="sm"
+                    dot={screening.status === "ready"}
+                  >
+                    {statusMeta.label}
                   </Badge>
                 </CardHeader>
 
