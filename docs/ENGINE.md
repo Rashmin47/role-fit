@@ -5,7 +5,7 @@
 > Source of truth: `lib/scoring/index.ts`, `lib/matching/index.ts`, `lib/routing/index.ts`, `lib/normalization/skills.ts`.
 > Regression suite: `lib/tests/engine.test.ts`.
 
-Last verified: 2026-10-19.
+Last verified: 2026-10-25.
 
 ---
 
@@ -48,9 +48,22 @@ A single object containing:
 - `matches`: `MatchEvidence[]` (every required/preferred requirement plus the experience row),
 - `gaps`: `SkillGap[]`,
 - `scoringWeights`: the weights used,
-- `calculatedAt`: ISO timestamp.
+- `calculatedAt`: ISO timestamp,
+- `extractionConfidence?: number` and `extractionWarnings?: string[]` when produced by `screenCandidateText()`.
 
 The output is serializable and stored in the screening store. It contains no model-generated narrative.
+
+### 1.4 Extraction assumptions (offline provider)
+
+File: `lib/ai/resume-heuristics.ts`.
+
+- **Honesty over recall.** Missing employers, degrees, dates, and years stay empty. The extractor never inserts a default company, university, or experience duration.
+- **Explicit years win.** A statement such as “5 years of experience” sets `totalExperienceYears` directly.
+- **Otherwise, date ranges are used.** Closed ranges and `Present` roles are converted to months, merged when they overlap, and rounded to one decimal. `Present` is evaluated at extraction time.
+- **Scoring does not read the clock or the resume.** It reads the stored `totalExperienceYears`. Re-extracting an open-ended role later can change that input, so a historical score is only reproducible from its stored extraction, not from the original file.
+- **Skills cite a line.** Every extracted skill keeps the resume line that evidenced it. The scorer may still fall back to “Listed in resume skills profile” if a skill has no snippet.
+- **Job requirements are line-scoped.** “Preferred” is detected from the requirement’s own line (or a short section header), not from a character window that can bleed into a neighbouring bullet. In “FastAPI or Django”, the later alternative is treated as preferred because the engine has no OR-group type yet.
+- **No fallback requirements.** If the job extractor recognizes nothing, the requirement list is empty. The wizard blocks screening until the recruiter adds at least one required skill.
 
 ---
 
@@ -228,7 +241,7 @@ Examples (max 25):
 Notes:
 
 - The 1.25 cap prevents extreme over-qualification from inflating the score, but the final `min(maxPoints, …)` means the cap never adds points beyond 25.
-- **Experience is read directly from `candidate.totalExperienceYears`.** It is not recalculated from employment dates. The `calculate_experience` tool exists but is not wired into scoring. This is a known gap.
+- **Scoring reads `candidate.totalExperienceYears` directly.** It never reads employment dates or the clock. The offline extractor is what derives the value from explicit statements or date ranges (see §1.4); the `calculate_experience` tool remains unwired.
 - `matches` carries a single synthetic `req-experience` evidence row with the threshold comparison in `confidenceNotes`.
 
 ---
@@ -406,8 +419,21 @@ Only `requiredSkills` and `preferredSkills` are evaluated. `educationRequirement
 
 - A compliant job JSON object with 2 required + 1 preferred validates and preserves array lengths.
 - `{ somethingElse: true }` is invalid (no requirements).
+- Candidate validation rejects non-objects; repairs negative years to 0, non-array skills/experience to empty arrays, and confidence outside 0–1 to the boundary.
+- String and object skill entries are both accepted.
+
+### Resume heuristics and end-to-end sample run
+
+- The fixture resume extracts “Jane Doe”, 5 explicit years, `Acme Corp` / `Senior Backend Engineer`, `Example University` / 2019, and skills with evidence lines.
+- The old fabricated “Tech Systems” employer and “Tribhuvan University” degree are asserted absent.
+- A sparse resume leaves experience and education empty rather than inventing them.
+- Generic filenames (`resume_final_v2.pdf`) fall back to the resume’s name; specific filenames (`jane_doe_resume.pdf`) are used as hints.
+- Screening all six demo resumes produces a Strong Match and a Needs Verification candidate; every candidate has at least one cited match.
+- The demo job keeps Docker required when only a nearby Redis bullet is preferred, treats “FastAPI or Django” as an alternative, and does not invent an education requirement.
 
 Any change to these numbers is a **product change**, not a test fix. Update the fixture, the docs, and the roadmap together.
+
+Current suite: **45 assertions, 0 failures**.
 
 ---
 
@@ -473,7 +499,7 @@ Rules:
 
 | Case | Current behavior | Guidance |
 | --- | --- | --- |
-| No required skills | Required score = full 50 | Validation flags it; do not ship a role with empty extraction |
+| No required skills | Required score = full 50 | The wizard blocks screening until at least one required skill is added; the scorer itself still returns full points |
 | No preferred skills | Preferred score = full 15 | Expected for some roles |
 | Required years = 0 | Experience score = full 25 | Expected for internships/junior roles |
 | Duplicate requirements | Each duplicate earns points separately | De-duplicate before scoring |
@@ -486,6 +512,13 @@ Rules:
 | Missing candidate ID | `calculateFinalMatchScore` generates `cand-<random>` | Pass stable IDs from persistence |
 | No evidence snippet | Falls back to "Listed in resume skills profile" | Never invent a quote |
 | Extraction returns malformed JSON | Validation rejects; Ollama falls back to mock | Keep fallbacks explicit |
+| Scanned or image-only PDF | `/api/ingest` returns a per-file error; no candidate is scored | Add OCR before claiming support |
+| File over size/count limit | Request or file is rejected with a readable error | Limits live in `app/api/ingest/route.ts` |
+| Document over 200k characters | Text is truncated; the screening gets a processing note | Do not silently truncate in a future persistence layer |
+| Open-ended role (`Present`) | Years are derived at extraction time and stored | Store the extraction timestamp for audit; re-extraction can change the value |
+| `FastAPI or Django` | Later alternative becomes preferred, not a second hard requirement | Model OR groups explicitly before tightening |
+| Extraction confidence < 0.6 | Candidate detail shows a low-confidence callout | Verify the source document before deciding |
+| Generic filename (`resume.pdf`) | Falls back to the resume’s first name-like line | Do not trust filenames as identity |
 
 ---
 
@@ -494,8 +527,8 @@ Rules:
 Tracked in [`ROADMAP.md`](./ROADMAP.md):
 
 1. Unify `lib/matching` and `lib/scoring` so "matched" means one thing.
-2. Validate candidate profile output (jobs are validated; candidates are not).
-3. Recalculate experience from employment dates instead of trusting the extracted number.
+2. Decide how date-derived experience becomes audit-grade: persist the extraction timestamp, keep the original text, and define a re-extraction policy.
+3. Model alternative requirements (`X or Y`) explicitly instead of treating the later skill as preferred.
 4. Score skill depth (Basic/Working/Strong/Expert) or explicitly document that depth is display-only.
 5. Source gap `marketFrequency` and explanations from retrieved evidence instead of fixed constants.
 6. Make routing thresholds configurable and covered by a decision table.

@@ -77,25 +77,37 @@ The project intentionally ships a high-fidelity UI + deterministic engine before
 
 ## 3. Runtime topology
 
-### 3.1 Today (browser-centric demo)
+### 3.1 Today (ingestion server-side, scoring browser-side)
 
 ```text
 ┌──────────────────────────── Browser ────────────────────────────┐
 │ Next.js App Router (client components for interactive screens)  │
 │                                                                  │
-│  NewScreeningWorkflow ──► getAIProvider() ──► mock              │
-│        │                        └──────────► Ollama HTTP        │
-│        │                                                        │
-│        ▼                                                        │
-│  lib/scoring / matching / routing (pure functions)              │
-│        │                                                        │
-│        ▼                                                        │
-│  screening-store (module store + useSyncExternalStore)          │
-│        │                                                        │
-│        ▼                                                        │
-│  localStorage  ◄──── dashboard, shortlist, candidate detail     │
+│  NewScreeningWorkflow ──POST files──┐                           │
+│        ▲                               │                        │
+│        │ extracted text + failures     │                        │
+│        │                               │                        │
+│  screenCandidateText() per candidate ◄─┘                        │
+│        │                                                         │
+│        ▼                                                         │
+│  getAIProvider() ──► mock heuristics (today) ──► validator       │
+│        │                        └──────────────► Ollama HTTP     │
+│        ▼                                                         │
+│  lib/scoring / matching / routing (pure functions)               │
+│        │                                                         │
+│        ▼                                                         │
+│  screening-store (module store + useSyncExternalStore)           │
+│        │                                                         │
+│        ▼                                                         │
+│  localStorage  ◄──── dashboard, shortlist, candidate detail      │
 │                                                                  │
-│  Career/market views ◄── lib/data/sample-data.ts (static)       │
+│  Career/market views ◄── lib/data/sample-data.ts (static)        │
+└───────────────────────────────┬──────────────────────────────────┘
+                                │ multipart/form-data
+┌───────────────────────────────▼──────────────────────────────────┐
+│ Server: app/api/ingest/route.ts                                  │
+│ unpdf (PDF) · mammoth (DOCX) · UTF-8 (TXT/MD)                    │
+│ limits · per-file failures · no persistence · no OCR             │
 └──────────────────────────────────────────────────────────────────┘
 
 Prisma schema / SQLite: present but unused by the running app.
@@ -104,8 +116,10 @@ Prisma schema / SQLite: present but unused by the running app.
 Consequences:
 
 - Everything works offline, but nothing is shared across devices.
-- Provider calls originate in the browser. Ollama needs CORS configuration.
+- PDF/DOCX text extraction runs on the server. Candidate/provider extraction still runs in the browser, so Ollama needs CORS configuration and the server-only `AI_PROVIDER` value is not available to the wizard.
+- Uploaded files are parsed per run and not stored. There is no OCR, so scanned/image-only PDFs fail with a recoverable error.
 - A hard reload of a locally-created screening works because the store hydrates from `localStorage`; SSR initially renders sample data until hydration.
+- Screenings created from the bundled sample resume set carry `isSample: true` and are labelled in the UI.
 - No candidate data should be treated as durable or private in this mode.
 
 ### 3.2 Target (production)
@@ -146,10 +160,11 @@ The target keeps the domain pure and moves I/O to the edges. Do not move scoring
 
 ### 4.1 `lib/ai` — extraction boundary
 
-- `schemas.ts`: TypeScript contracts + `validateJobRequirementsOutput()`. This is the trust boundary for job extraction.
+- `schemas.ts`: TypeScript contracts + `validateJobRequirementsOutput()` and `validateCandidateProfileOutput()`. This is the trust boundary for both job and candidate extraction. Candidate validation repairs or rejects negative years, non-array skills/experience, malformed certifications, and out-of-range confidence; it records warnings for the UI.
 - `provider.ts`: `AIProvider` interface + `getAIProvider()` factory driven by `AI_PROVIDER`.
-- `mock-provider.ts`: offline rule/pattern extractor. Deterministic, catalog-based, and **demo-quality**.
-- `ollama-provider.ts`: local HTTP calls to `/api/generate` with JSON formatting. Job extraction is validated; candidate extraction currently trusts the shape and falls back on error.
+- `mock-provider.ts`: offline rule/pattern extractor. Job extraction is catalog-based and line-scoped; candidate extraction delegates to `resume-heuristics.ts`. It no longer invents fallback requirements, employers, degrees, or experience years.
+- `resume-heuristics.ts`: section splitting, name/contact extraction, date-range experience parsing, education/projects/certifications, skill evidence lines, and confidence scoring. Explicit experience statements win; otherwise closed date ranges and `Present` roles are converted to years as of extraction time.
+- `ollama-provider.ts`: local HTTP calls to `/api/generate` with JSON formatting. Both job and candidate output are validated; candidate extraction falls back to the mock provider on error.
 - `prompts/job-extraction.ts`: system prompt + user prompt builder.
 
 Rules for providers:
@@ -160,9 +175,21 @@ Rules for providers:
 4. Always provide a fallback path that keeps the app usable.
 5. Keep prompts versioned in code, not hidden in UI strings.
 
-Candidate profile validation is a known gap: only job output is validated. Adding a `validateCandidateProfileOutput()` is a Phase 1 task.
+### 4.2 `lib/screening` — candidate orchestration
 
-### 4.2 `lib/normalization` — canonical vocabulary
+`screenCandidateText()` is the single path from resume text to a scored candidate:
+
+```text
+provider extraction → validateCandidateProfileOutput
+→ candidateProfileToExtraction → calculateFinalMatchScore
+→ attach extractionConfidence + extractionWarnings
+```
+
+`structuredJobToRequirements()` adapts validated job output into the presentation/engine shape. The module is intentionally thin; it enforces the boundary between AI DTOs and deterministic scoring. It does not persist anything.
+
+The ingest route (`app/api/ingest/route.ts`) is adjacent but separate: it converts uploaded PDF/DOCX/TXT/MD files to text and returns per-file failures. It never calls a provider or the scorer.
+
+### 4.3 `lib/normalization` — canonical vocabulary
 
 `CANONICAL_SKILL_MAP` maps aliases (`psql`, `postgres`, `postgresql`) to canonical labels (`PostgreSQL`). Unknown tokens fall back to title case.
 
@@ -170,19 +197,19 @@ Candidate profile validation is a known gap: only job output is validated. Addin
 
 This layer should eventually be backed by the `Skill` / `SkillAlias` Prisma tables and a seeded taxonomy.
 
-### 4.3 `lib/retrieval` — grounding
+### 4.4 `lib/retrieval` — grounding
 
 Today: an in-memory repository of three sample postings plus market-role fixtures. `retrieveRelevantJobPostings()` filters by role/skill overlap; `retrieveMarketEvidence()` returns aggregated stats and citations with the label `Sample market dataset`.
 
 It is **not** a vector database or a live scraper. The interface is shaped so that a real repository (Prisma `JobPosting` + `EvidenceSource`, or a vector index) can replace the sample array without changing callers.
 
-### 4.4 `lib/matching` — requirement ↔ evidence
+### 4.5 `lib/matching` — requirement ↔ evidence
 
 `evaluateCandidateMatch()` classifies each required/preferred requirement as `MATCH`, `PARTIAL`, or `NOT_FOUND` and produces review flags.
 
 It is the more expressive matcher (supports partial depth and work-history evidence). `lib/scoring` independently recomputes matching to earn points. The duplication is a known consolidation target; until then, both must agree on the meaning of "matched".
 
-### 4.5 `lib/scoring` — weighted points
+### 4.6 `lib/scoring` — weighted points
 
 Pure functions:
 
@@ -196,11 +223,11 @@ Pure functions:
 
 All are deterministic and independently testable. See `docs/ENGINE.md` for formulas.
 
-### 4.6 `lib/routing` — queue classification
+### 4.7 `lib/routing` — queue classification
 
 Maps a score + missing count + experience to `STRONG_MATCH`, `REVIEW`, or `NEEDS_VERIFICATION` with reasons and a suggested action. No rejection state exists by design.
 
-### 4.7 `lib/batch` — scalable orchestration
+### 4.8 `lib/batch` — scalable orchestration
 
 `BatchScreeningPipeline` processes each candidate independently:
 
@@ -210,20 +237,20 @@ Maps a score + missing count + experience to `STRONG_MATCH`, `REVIEW`, or `NEEDS
 4. route,
 5. record status/error per candidate.
 
-Sequential today, intentionally per-candidate (avoids monolithic context). It is not called by the UI yet. When wiring it:
+Sequential today, intentionally per-candidate (avoids monolithic context). It is not called by the UI yet; the wizard performs the same extraction → match → score → route loop per candidate through `lib/screening`. When wiring it:
 
 - stream progress to the client,
 - persist `ScoringRun` + `CandidateProcessingJob`,
 - make retries idempotent by `(jobId, candidateId)`,
 - keep failures isolated so one bad resume does not abort a batch.
 
-### 4.8 `lib/tools` — deterministic tool registry
+### 4.9 `lib/tools` — deterministic tool registry
 
 A lightweight registry of internal functions (`normalize_skill`, `calculate_experience`, `retrieve_market_requirements`, `search_skill_taxonomy`). It exists as the foundation for function calling / future agentic extraction, but is not yet invoked by providers or UI.
 
 Treat tool handlers as domain functions: pure, typed, and testable.
 
-### 4.9 `lib/store` — client state
+### 4.10 `lib/store` — client state
 
 A module-level external store with `useSyncExternalStore`:
 
@@ -231,11 +258,12 @@ A module-level external store with `useSyncExternalStore`:
 - `localStorage` persistence,
 - cross-tab sync via the `storage` event,
 - server snapshot = sample data, client snapshot = persisted data,
-- decisions and notes are stored on the candidate record.
+- decisions and notes are stored on the candidate record,
+- screenings carry `isSample`, `processingNotes`, and per-candidate extraction confidence/warnings.
 
 Why a module store rather than React Context: no provider nesting, no hydration effect, and consumers outside a subtree can share data. Why not Zustand: the surface is small and the built-in primitive is sufficient.
 
-### 4.10 `prisma/` — target persistence
+### 4.11 `prisma/` — target persistence
 
 The schema models organizations, users, jobs, requirements, candidates, resumes, normalized candidate skills/experience, matches, scoring runs, per-candidate processing jobs, market postings/evidence, market role aggregates, and companies.
 
@@ -250,27 +278,51 @@ It is **not imported by the app**. `prisma/generated` is git-ignored and must be
 ```text
 User pastes job description (NewScreeningWorkflow step 1)
   → getAIProvider().extractJobRequirements(title, text)
-     → MockAIProvider: regex experience + catalog keyword scan + fallback
+     → MockAIProvider: regex experience + catalog keyword scan
+       · line-scoped preferred detection
+       · "X or Y" → Y becomes preferred, not a second hard requirement
+       · no fallback requirements; empty output is allowed
      → or OllamaAIProvider: POST /api/generate → validateJobRequirementsOutput → fallback
   → user reviews/edits required vs preferred (step 2)
-  → wizard builds a presentation `JobRequirements`
-  → deterministic scoring against DEMO_RESUME_POOL
-  → JobScreening written to localStorage
-  → redirect to /recruitment/[jobId]
+  → structuredJobToRequirements() builds the engine shape
 ```
 
-### 5.2 Candidate review (current)
+### 5.2 Resume ingestion and screening (current)
+
+```text
+User stages PDF/DOCX/TXT/MD files or the bundled sample set (step 3)
+  → POST /api/ingest (uploaded files only)
+     → magic-byte + extension checks, size/count/rate limits
+     → unpdf / mammoth / UTF-8 text extraction
+     → { documents[], failed[] } with truncation flags
+  → screenCandidateText() per candidate
+     → getAIProvider().extractCandidateProfile(text, nameHint)
+     → validateCandidateProfileOutput() repairs/rejects
+     → candidateProfileToExtraction()
+     → calculateFinalMatchScore() (deterministic)
+     → extractionConfidence + extractionWarnings attached
+  → failures are isolated per file/candidate and surfaced as processing notes
+  → candidates sorted by score, JobScreening written to localStorage
+  → redirect to /recruitment/[jobId]
+
+Sample mode skips /api/ingest and uses DEMO_RESUME_POOL text directly.
+The resulting screening carries isSample: true and is labelled in the UI.
+```
+
+### 5.3 Candidate review (current)
 
 ```text
 /recruitment/[jobId]
   → read screening from store
+  → sample label / processing notes / weights
   → table sort/filter, decision select
   → /recruitment/[jobId]/candidate/[candidateId]
      → score tiles, requirement-by-requirement citations, gaps, notes
+     → low-confidence extraction callout when confidence < 0.6
      → human decision + notes written back to store
 ```
 
-### 5.3 Career intelligence (current)
+### 5.4 Career intelligence (current)
 
 ```text
 /career-intelligence or /[role]
@@ -279,7 +331,7 @@ User pastes job description (NewScreeningWorkflow step 1)
   → all data labelled "Sample market dataset"
 ```
 
-### 5.4 Target flows to build
+### 5.5 Target flows to build
 
 1. **Server extraction**: upload/paste → server action → provider → validated structured requirements → DB.
 2. **Batch screening**: create run → enqueue candidates → per-candidate jobs → persist matches → progress stream → shortlist.
@@ -298,7 +350,7 @@ User pastes job description (NewScreeningWorkflow step 1)
 | A4 | Tailwind v4 CSS-first tokens | Fewer config files, native theme variables | No `tailwind.config.js`; tokens live in `globals.css` |
 | A5 | Module external store now, Prisma later | Ship a testable UI before infrastructure | Demo data is not durable; migration required |
 | A6 | Presentation and pipeline types coexist | Avoid a risky big-bang refactor during UI work | Duplication and conversion code; unification is Phase 1 |
-| A7 | Deterministic mock provider | Offline demos and test stability | Fabricated defaults; must be clearly labelled |
+| A7 | Deterministic offline provider with honest heuristics | Offline demos and test stability | Lower recall than an LLM; unrecognized fields stay empty instead of being invented |
 | A8 | No auto-reject state | Ethical/human-in-the-loop requirement | Routing only triages; decisions are explicit |
 | A9 | Stable Prisma 7, not 8 RC | Production stability | Revisit when Prisma 8 is GA |
 | A10 | TypeScript 5.9, not 7 | Upstream Next/Prisma compatibility | Revisit after ecosystem support |
@@ -311,8 +363,9 @@ Current demo mode:
 
 - No authentication, authorization, or tenant isolation.
 - Candidate data may be stored unencrypted in browser `localStorage`.
-- Uploaded file contents are not read.
-- Do not use real candidate data in demos.
+- Uploaded file contents are parsed in memory by `/api/ingest` and are not persisted, but they do leave the browser and reach the local Next.js server.
+- The in-memory rate limiter resets on restart and is not a substitute for edge/platform protection.
+- Do not use real candidate data in demos without a privacy review.
 
 Before production:
 
@@ -334,7 +387,7 @@ Before production:
 | New scoring component | `lib/scoring/index.ts` + weights type | Weights must still sum to 100; update UI settings |
 | New review queue | `lib/routing/index.ts` | No rejection state |
 | Real market source | `lib/retrieval/index.ts` + `JobPosting` tables | Preserve citations and provenance |
-| PDF/DOCX parsing | new `lib/ingestion/` module | Keep parsing out of UI components |
+| PDF/DOCX parsing | `app/api/ingest/route.ts` | Server-only; keep parser calls out of client components |
 | Persistence | server-only repository module | Do not import Prisma into client components |
 | New page | `app/(dashboard)/…` | Add to `AppShell` nav only if it is a top-level destination |
 | New UI primitive | `components/ui/` | Follow existing token/accessibility patterns |
@@ -345,9 +398,10 @@ Before production:
 
 Today:
 
-- `lib/tests/engine.test.ts` asserts normalization, scoring math, routing, and schema validation.
+- `lib/tests/engine.test.ts` asserts normalization, scoring math, routing, job/candidate schema validation, resume heuristics, and an end-to-end sample screening run (45 assertions).
 - TypeScript, ESLint, and production build are the other gates.
-- No component, integration, or browser tests.
+- `/api/ingest` was smoke-tested with real PDF, DOCX, TXT, corrupt PDF, and empty-file fixtures, but those fixtures are not committed.
+- No component, integration, or browser tests are committed.
 
 Target:
 

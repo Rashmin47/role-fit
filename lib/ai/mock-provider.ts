@@ -2,8 +2,10 @@ import {
   StructuredJobRequirements,
   CandidateProfile,
   validateJobRequirementsOutput,
+  validateCandidateProfileOutput,
 } from "./schemas";
 import { normalizeSkillName } from "../normalization/skills";
+import { extractCandidateHeuristics } from "./resume-heuristics";
 
 export class MockAIProvider {
   name = "Local Rule & Pattern Extractor (Offline)";
@@ -13,158 +15,190 @@ export class MockAIProvider {
     rawDescription: string
   ): Promise<StructuredJobRequirements> {
     const text = rawDescription || "";
+    const lines = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
 
-    // 1. Minimum experience extraction
-    let minExp = 3.0;
-    const expRegex = /(\d+(\.\d+)?)\s*\+?\s*(years?|yrs?|yr)/i;
-    const expMatch = text.match(expRegex);
-    if (expMatch) {
-      minExp = parseFloat(expMatch[1]);
+    // 1. Minimum experience. The wizard overrides this with the recruiter's
+    // explicit input; the default here is honest (unknown = 0).
+    const expMatch = text.match(
+      /(\d+(?:\.\d+)?)\s*\+?\s*(?:years?|yrs?|yr)/i
+    );
+    const minExp = expMatch ? parseFloat(expMatch[1]) : 0;
+
+    // 2. Technical skill recognition catalog.
+    const knownCatalog: Array<{
+      name: string;
+      category: string;
+      aliases: string[];
+    }> = [
+      { name: "Python", category: "language", aliases: ["python", "python3"] },
+      { name: "FastAPI", category: "framework", aliases: ["fastapi", "fast-api", "fast api"] },
+      { name: "Django", category: "framework", aliases: ["django"] },
+      { name: "Flask", category: "framework", aliases: ["flask"] },
+      { name: "PostgreSQL", category: "database", aliases: ["postgresql", "postgres", "psql"] },
+      { name: "MySQL", category: "database", aliases: ["mysql", "mariadb"] },
+      { name: "MongoDB", category: "database", aliases: ["mongodb", "mongo"] },
+      { name: "Redis", category: "database", aliases: ["redis"] },
+      { name: "Docker", category: "tool", aliases: ["docker", "containerization", "containers"] },
+      { name: "Kubernetes", category: "cloud", aliases: ["k8s", "kubernetes"] },
+      { name: "AWS", category: "cloud", aliases: ["aws", "amazon web services"] },
+      { name: "GCP", category: "cloud", aliases: ["gcp", "google cloud"] },
+      { name: "Azure", category: "cloud", aliases: ["azure", "microsoft azure"] },
+      { name: "Testing (PyTest)", category: "tool", aliases: ["pytest", "py.test", "unit testing", "testing"] },
+      { name: "CI/CD", category: "tool", aliases: ["ci/cd", "cicd", "continuous integration", "github actions"] },
+      { name: "React", category: "framework", aliases: ["react", "react.js", "reactjs"] },
+      { name: "TypeScript", category: "language", aliases: ["typescript"] },
+      { name: "Node.js", category: "framework", aliases: ["node", "nodejs", "node.js"] },
+      { name: "Git", category: "tool", aliases: ["git"] },
+      { name: "GraphQL", category: "tool", aliases: ["graphql"] },
+      { name: "REST APIs", category: "methodology", aliases: ["rest", "restful", "rest api"] },
+      { name: "Kafka", category: "tool", aliases: ["kafka"] },
+      { name: "Terraform", category: "tool", aliases: ["terraform"] },
+      { name: "Linux", category: "tool", aliases: ["linux"] },
+    ];
+
+    const escapeRegex = (value: string): string =>
+      value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    /**
+     * Preferred detection is line-scoped. A window around the keyword used to
+     * pick up "preferred" from a nearby bullet and misclassify required skills.
+     */
+    interface MatchContext {
+      context: string;
+      before: string;
     }
 
-    // 2. Technical skill recognition catalog
-    const knownCatalog = [
-      { name: "Python", category: "language", aliases: ["python", "py", "python3"] },
-      { name: "FastAPI", category: "framework", aliases: ["fastapi", "fast-api", "fast api"] },
-      { name: "PostgreSQL", category: "database", aliases: ["postgresql", "postgres", "psql"] },
-      { name: "Docker", category: "tool", aliases: ["docker", "containerization"] },
-      { name: "Redis", category: "database", aliases: ["redis", "caching"] },
-      { name: "AWS", category: "cloud", aliases: ["aws", "amazon web services"] },
-      { name: "Kubernetes", category: "cloud", aliases: ["k8s", "kubernetes"] },
-      { name: "Testing (PyTest)", category: "tool", aliases: ["pytest", "unit testing", "testing"] },
-      { name: "CI/CD", category: "tool", aliases: ["ci/cd", "cicd", "github actions"] },
-      { name: "React", category: "framework", aliases: ["react", "react.js", "reactjs"] },
-      { name: "TypeScript", category: "language", aliases: ["typescript", "ts"] },
-      { name: "Node.js", category: "framework", aliases: ["node", "nodejs", "node.js"] },
-    ];
+    const contextFor = (aliases: string[]): MatchContext | null => {
+      for (let index = 0; index < lines.length; index++) {
+        for (const alias of aliases) {
+          const pattern = new RegExp(
+            `(^|[^A-Za-z0-9+#])${escapeRegex(alias)}(?=$|[^A-Za-z0-9+#])`,
+            "i"
+          );
+          const match = pattern.exec(lines[index]);
+          if (!match) continue;
+
+          const aliasStart = match.index + (match[1]?.length ?? 0);
+          const before = lines[index].slice(
+            Math.max(0, aliasStart - 40),
+            aliasStart
+          );
+          const previous = lines[index - 1] ?? "";
+          const isSectionHeader =
+            previous.length <= 80 &&
+            !/^[-•*]/.test(previous) &&
+            previous.split(/\s+/).length <= 6 &&
+            /\b(preferred|nice to have|bonus|optional)\b/i.test(previous);
+          return {
+            context: `${isSectionHeader ? previous : ""} ${lines[index]}`.trim(),
+            before,
+          };
+        }
+      }
+      return null;
+    };
 
     const requiredSkills: any[] = [];
     const preferredSkills: any[] = [];
 
-    // Scan description
     for (const item of knownCatalog) {
-      const isMatched = item.aliases.some((alias) => {
-        const reg = new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
-        return reg.test(text);
-      });
+      const match = contextFor(item.aliases);
+      if (!match) continue;
 
-      if (isMatched) {
-        const canonical = normalizeSkillName(item.name);
-        // Detect if listed in "preferred", "nice to have", "plus"
-        const isPreferred = /preferred|plus|nice to have|optional|bonus/i.test(
-          text.slice(Math.max(0, text.indexOf(item.name) - 100), text.indexOf(item.name) + 100)
-        );
+      const canonical = normalizeSkillName(item.name);
+      // "FastAPI or Django" is an alternative, not a second mandatory skill.
+      // The engine has no OR-group type, so the later alternative earns
+      // preferred credit instead of creating a false required gap.
+      const isAlternative = /\bor\s*$/i.test(match.before);
+      const isPreferred =
+        isAlternative ||
+        /\b(preferred|plus|nice to have|optional|bonus)\b/i.test(match.context);
+      const requirement = {
+        id: `req-${canonical.toLowerCase().replace(/[^a-z0-9]/g, "-")}`,
+        name: canonical,
+        type: "skill" as const,
+        importance: isPreferred ? ("preferred" as const) : ("required" as const),
+        description: isAlternative
+          ? `Alternative to another listed requirement in the ${jobTitle || "role"} description.`
+          : `Listed in the ${jobTitle || "role"} description.`,
+        extractedEvidence: match.context.slice(0, 220),
+        confidence: isPreferred ? 0.85 : 0.9,
+      };
 
-        const reqObj = {
-          id: `req-${canonical.toLowerCase().replace(/[^a-z0-9]/g, "-")}`,
-          name: canonical,
-          type: "skill" as const,
-          importance: isPreferred ? ("preferred" as const) : ("required" as const),
-          description: `${canonical} proficiency verified for ${jobTitle} workflows.`,
-          extractedEvidence: `Identified keyword pattern in job description context.`,
-          confidence: 0.96,
-        };
-
-        if (isPreferred) {
-          preferredSkills.push(reqObj);
-        } else {
-          requiredSkills.push(reqObj);
-        }
-      }
+      if (isPreferred) preferredSkills.push(requirement);
+      else requiredSkills.push(requirement);
     }
 
-    // Default fallbacks for clean demo if user entered custom short text
-    if (requiredSkills.length === 0) {
-      requiredSkills.push(
-        { id: "req-python", name: "Python", type: "skill", importance: "required", confidence: 0.98, extractedEvidence: "Core programming language requirement" },
-        { id: "req-fastapi", name: "FastAPI", type: "skill", importance: "required", confidence: 0.95, extractedEvidence: "Web API framework requirement" },
-        { id: "req-postgresql", name: "PostgreSQL", type: "skill", importance: "required", confidence: 0.96, extractedEvidence: "Database persistence layer requirement" },
-        { id: "req-docker", name: "Docker", type: "skill", importance: "required", confidence: 0.92, extractedEvidence: "Container runtime requirement" }
-      );
-      preferredSkills.push(
-        { id: "req-redis", name: "Redis", type: "skill", importance: "preferred", confidence: 0.88, extractedEvidence: "In-memory caching optional capability" }
-      );
-    }
+    // 3. Education is only extracted when the description actually mentions a
+    // degree. No default bachelor's requirement is invented.
+    const educationLine = lines.find((line) =>
+      /\b(bachelor(?:'s)?|master(?:'s)?|degree|bsc|msc|b\.?\s?tech|m\.?\s?tech|ph\.?\s?d|doctorate)\b/i.test(
+        line
+      )
+    );
+    const educationRequirements = educationLine
+      ? [
+          {
+            id: "req-education",
+            name: educationLine.replace(/^[-•*]\s*/, "").slice(0, 160),
+            type: "education" as const,
+            importance: "required" as const,
+            confidence: 0.8,
+            extractedEvidence: educationLine.slice(0, 220),
+          },
+        ]
+      : [];
 
-    const structured = {
+    // 4. Responsibilities are bullet lines with action verbs. If the
+    // description has none, the array stays empty rather than being invented.
+    const responsibilities = lines
+      .filter(
+        (line) =>
+          /^[-•*]\s+/.test(line) &&
+          /\b(build|design|develop|maintain|collaborate|lead|implement|manage|own|deliver|architect)\b/i.test(
+            line
+          )
+      )
+      .map((line) => line.replace(/^[-•*]\s+/, "").slice(0, 220))
+      .slice(0, 6);
+
+    const structured: StructuredJobRequirements = {
       title: jobTitle || "Software Engineer",
-      summary: `Structured role requirements for ${jobTitle}.`,
-      department: "Engineering",
-      location: "Kathmandu / Remote",
       minimumExperienceYears: minExp,
       requiredSkills,
       preferredSkills,
-      educationRequirements: [
-        {
-          id: "req-edu-cs",
-          name: "Bachelor's Degree in Computer Science or Equivalent",
-          type: "education" as const,
-          importance: "required" as const,
-          confidence: 0.9,
-          extractedEvidence: "Standard engineering educational foundation",
-        },
-      ],
-      responsibilities: [
-        "Architect and maintain modular, scalable web services and database schemas.",
-        "Implement unit and integration tests with continuous integration pipelines.",
-        "Collaborate with product and infrastructure teams to deliver resilient features.",
-      ],
+      educationRequirements,
+      responsibilities,
       certifications: [],
-      domainKnowledge: ["API Architecture", "Relational Database Design"],
-      confidence: 0.97,
+      domainKnowledge: [],
+      confidence:
+        requiredSkills.length + preferredSkills.length > 0 ? 0.9 : 0.4,
       extractedAt: new Date().toISOString(),
     };
 
-    return validateJobRequirementsOutput(structured).data!;
+    return validateJobRequirementsOutput(structured).data ?? structured;
   }
 
   async extractCandidateProfile(
     rawResumeText: string,
     candidateNameHint?: string
   ): Promise<CandidateProfile> {
-    const text = rawResumeText || "";
-    const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
-    const name = candidateNameHint || lines[0]?.replace(/^(name:?|resume of:?)\s*/i, "") || "Candidate";
+    // Extract only what the document actually contains. No invented employer,
+    // degree, or experience years. The validator repairs malformed shapes and
+    // returns warnings that the UI can surface.
+    const heuristic = extractCandidateHeuristics(
+      rawResumeText,
+      candidateNameHint
+    );
+    const validated = validateCandidateProfileOutput(heuristic, candidateNameHint);
 
-    let totalExperienceYears = 2.5;
-    const expMatch = text.match(/(\d+(\.\d+)?)\s*\+?\s*(years?|yrs?|yr)/i);
-    if (expMatch) {
-      totalExperienceYears = parseFloat(expMatch[1]);
-    }
+    if (validated.data) return validated.data;
 
-    const catalog = ["Python", "FastAPI", "PostgreSQL", "Docker", "Redis", "AWS", "Testing (PyTest)", "TypeScript", "React"];
-    const extractedSkills = catalog
-      .filter((s) => new RegExp(`\\b${s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text))
-      .map((skill) => ({
-        name: normalizeSkillName(skill),
-        level: (totalExperienceYears >= 3 ? "Strong" : "Working knowledge") as "Strong" | "Working knowledge",
-        yearsOfExperience: Math.min(totalExperienceYears, 3.5),
-        evidenceSnippet: `Extracted from candidate resume text`,
-      }));
-
-    return {
-      name,
-      totalExperienceYears,
-      skills: extractedSkills,
-      experience: [
-        {
-          company: "Tech Systems",
-          title: "Backend Engineer",
-          years: totalExperienceYears,
-          description: text.slice(0, 300) || "Backend software development and API implementation.",
-          technologies: extractedSkills.map((s) => s.name),
-        },
-      ],
-      education: [
-        {
-          institution: "Tribhuvan University / IOE",
-          degree: "Bachelor of Engineering",
-          field: "Computer Science",
-          graduationYear: 2022,
-        },
-      ],
-      confidence: 0.95,
-      extractedAt: new Date().toISOString(),
-    };
+    // The heuristic always produces a shaped profile; this guard is defensive
+    // for future changes to the heuristics module.
+    return heuristic;
   }
 }

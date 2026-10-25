@@ -123,13 +123,15 @@ Used by the UI, sample data, and the legacy scoring API.
   status: "Strong Match" | "Review" | "Needs Verification",
   decision: "pending" | "shortlisted" | "held" | "not_recommended",
   reviewNotes?, reviewedAt?,       // added during the v0.2 upgrade
+  extractionConfidence?,           // 0–1, from the validated profile
+  extractionWarnings?,             // non-fatal extraction issues
   matches: MatchEvidence[],
   gaps: SkillGap[],
   scoringWeights, calculatedAt
 }
 ```
 
-`reviewNotes` and `reviewedAt` are persisted in `localStorage` today and should map to `CandidateMatch.reviewNotes` / `updatedAt` later.
+`reviewNotes` and `reviewedAt` are persisted in `localStorage` today and should map to `CandidateMatch.reviewNotes` / `updatedAt` later. `extractionConfidence` and `extractionWarnings` are presentation/audit metadata; they can live in `CandidateMatch.matchesJson` or dedicated columns when persistence lands.
 
 ---
 
@@ -153,9 +155,15 @@ JobScreening {
   status: "draft" | "extracting" | "ready" | "completed",
   candidateCount, reviewedCount, shortlistedCount,
   requirements: JobRequirements,
-  candidates: CandidateScoreResult[]
+  candidates: CandidateScoreResult[],
+  isSample?: boolean,           // fictional demo set
+  processingNotes?: string[]    // unreadable/truncated files, failed candidates
 }
 ```
+
+### Ingestion boundary
+
+Uploaded PDF/DOCX/TXT/MD files are parsed by `app/api/ingest/route.ts` and are **not** written to `localStorage` or the database. The request holds file bytes in memory, returns extracted text, and the wizard screens that text. Only the resulting score evidence (short snippets), processing notes, and decisions are persisted in the browser store. There is no `Resume` row yet and no raw document retention.
 
 ### Constraints
 
@@ -164,6 +172,7 @@ JobScreening {
 - Clearing site data destroys screenings and decisions.
 - No PII protections. Do not store real candidate data here.
 - `candidateCount` must equal `candidates.length` for consistency (the sample fixture was corrected in v0.2).
+- Sample screenings must keep `isSample: true` so the UI can label them.
 
 ### Versioning rule
 
@@ -314,6 +323,15 @@ Job
   + CandidateMatch[] joined to Candidate
   + counts derived from decisions
 ```
+
+Additional projection fields:
+
+| Presentation | Relational |
+| --- | --- |
+| `isSample` | `ScoringRun.source = "sample"` (or an equivalent provenance field) |
+| `processingNotes` | `ScoringRun.errorSummary` / `CandidateProcessingJob.lastError` + `Resume` parsing status |
+| `extractionConfidence` | `CandidateMatch.confidence` or `matchesJson` |
+| `extractionWarnings` | `CandidateMatch.matchesJson` / audit log |
 
 ### Market types → aggregate tables
 

@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { ScoreMeter } from "@/components/ui/ScoreMeter";
 import { Progress } from "@/components/ui/Input";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
 import { useScreeningStore } from "@/lib/store/screening-store";
 import { formatYears } from "@/lib/utils";
@@ -136,8 +137,13 @@ export default function DashboardPage() {
                       >
                         <div className="flex items-start justify-between gap-4">
                           <div className="min-w-0">
-                            <span className="block truncate text-sm font-medium text-nirman-dark">
-                              {screening.title}
+                            <span className="flex min-w-0 items-center gap-2">
+                              <span className="truncate text-sm font-medium text-nirman-dark">
+                                {screening.title}
+                              </span>
+                              {screening.isSample && (
+                                <Badge variant="neutral">Sample</Badge>
+                              )}
                             </span>
                             <p className="mt-1 text-[13px] text-nirman-text-secondary">
                               {screening.department} · {screening.location}

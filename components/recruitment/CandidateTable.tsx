@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { ScoreMeter } from "@/components/ui/ScoreMeter";
-import { formatYears } from "@/lib/utils";
+import { cn, formatYears } from "@/lib/utils";
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronRight, Search } from "lucide-react";
 
 interface CandidateTableProps {
@@ -189,6 +189,39 @@ export function CandidateTable({
               filteredCandidates.map((candidate) => {
                 const matchedCount = candidate.matches.filter((m) => m.matched).length;
                 const totalCount = candidate.matches.length;
+                const lowConfidence =
+                  candidate.extractionConfidence !== undefined &&
+                  candidate.extractionConfidence < 0.6;
+                const requiredGaps = candidate.gaps.filter(
+                  (gap) => gap.category === "required"
+                );
+                const preferredGaps = candidate.gaps.filter(
+                  (gap) => gap.category === "preferred"
+                );
+                const gapSummary =
+                  requiredGaps.length > 0
+                    ? `${requiredGaps.length} required ${
+                        requiredGaps.length === 1 ? "gap" : "gaps"
+                      }: ${requiredGaps
+                        .slice(0, 2)
+                        .map((gap) => gap.skill)
+                        .join(", ")}${
+                        requiredGaps.length > 2 ? "…" : ""
+                      }${
+                        preferredGaps.length > 0
+                          ? ` · ${preferredGaps.length} preferred`
+                          : ""
+                      }`
+                    : preferredGaps.length > 0
+                    ? `${preferredGaps.length} preferred ${
+                        preferredGaps.length === 1 ? "gap" : "gaps"
+                      }: ${preferredGaps
+                        .slice(0, 2)
+                        .map((gap) => gap.skill)
+                        .join(", ")}${
+                        preferredGaps.length > 2 ? "…" : ""
+                      }`
+                    : "No gaps";
 
                 return (
                   <tr
@@ -199,12 +232,16 @@ export function CandidateTable({
                       <span className="block font-medium text-nirman-dark">
                         {candidate.candidateName}
                       </span>
-                      <span className="mt-0.5 block text-xs text-nirman-text-muted">
-                        {candidate.gaps.length === 0
-                          ? "No gaps"
-                          : `${candidate.gaps.length} ${
-                              candidate.gaps.length === 1 ? "gap" : "gaps"
-                            }: ${candidate.gaps[0]?.skill}`}
+                      <span
+                        className={cn(
+                          "mt-0.5 block text-xs",
+                          lowConfidence
+                            ? "text-nirman-warning-text"
+                            : "text-nirman-text-muted"
+                        )}
+                      >
+                        {lowConfidence && "Low-confidence extraction · "}
+                        {gapSummary}
                       </span>
                     </td>
 

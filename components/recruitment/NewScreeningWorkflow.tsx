@@ -9,11 +9,19 @@ import { Callout } from "@/components/ui/Callout";
 import { WorkflowStatus, WorkflowStageItem } from "@/components/ui/WorkflowStatus";
 import { useScreeningStore } from "@/lib/store/screening-store";
 import {
+  DEMO_JOB_DESCRIPTION,
+  DEMO_RESUME_POOL,
+  type DemoResume,
+} from "@/lib/data/demo-resumes";
+import {
   getAIProvider,
   StructuredJobRequirements,
   ExtractedRequirement,
 } from "@/lib/ai/provider";
-import { calculateFinalMatchScore, DEFAULT_SCORING_WEIGHTS } from "@/lib/scoring";
+import {
+  screenCandidateText,
+  structuredJobToRequirements,
+} from "@/lib/screening/screen-candidate";
 import { JobScreening, CandidateScoreResult } from "@/types";
 import { cn } from "@/lib/utils";
 import {
@@ -28,59 +36,67 @@ import {
   X,
 } from "lucide-react";
 
-const SAMPLE_JOB_TEXT = `We are looking for a Python Backend Developer with 3+ years of professional experience building scalable web APIs.
-Key Requirements:
-- Strong proficiency in Python and FastAPI or Django.
-- Experience with PostgreSQL schema design, queries, and optimization.
-- Containerization with Docker for development and deployment.
-- Experience with Redis caching and asynchronous queues is preferred.
-- Familiarity with unit testing (PyTest) and CI/CD pipelines.`;
-
-const DEMO_RESUME_POOL = [
-  {
-    name: "Sanjay Thapa",
-    years: 2.4,
-    skills: ["Python", "FastAPI", "PostgreSQL", "Docker", "Git"],
-    text: "Backend Engineer with 2.4 years of experience building Python and FastAPI microservices. Designed PostgreSQL database schemas, implemented Docker containers for local and staging environments. Wrote PyTest unit test suites.",
-  },
-  {
-    name: "Aarav Sharma",
-    years: 4.2,
-    skills: ["Python", "FastAPI", "PostgreSQL", "Docker", "Redis", "Git"],
-    text: "Lead Backend Engineer with 4.2 years experience. Architected distributed FastAPI services with PostgreSQL cluster and Redis caching. Containerized all workflows via Docker and GitHub Actions.",
-  },
-  {
-    name: "Priya Karki",
-    years: 3.1,
-    skills: ["Python", "Django", "PostgreSQL", "Docker"],
-    text: "Python developer with 3.1 years experience specializing in Django REST framework and PostgreSQL database optimization. Basic Docker container experience.",
-  },
-  {
-    name: "Bikash Adhikari",
-    years: 5.2,
-    skills: ["Python", "FastAPI", "PostgreSQL", "Docker", "Redis", "AWS", "PyTest"],
-    text: "Senior Backend Specialist with 5.2 years building mission-critical services in Python and FastAPI. Expert in PostgreSQL tuning, Redis caching, AWS deployments, and Docker orchestration.",
-  },
-  {
-    name: "Rohan Joshi",
-    years: 1.8,
-    skills: ["Python", "Flask", "PostgreSQL"],
-    text: "Junior backend developer with 1.8 years in Python and Flask development. Basic SQL and database operations.",
-  },
-  {
-    name: "Anjali Mehta",
-    years: 3.8,
-    skills: ["Python", "FastAPI", "PostgreSQL", "Docker"],
-    text: "Software Engineer with 3.8 years of backend development. Built asynchronous API endpoints with FastAPI, PostgreSQL, and Dockerized build systems.",
-  },
-];
-
 const STEPS = [
   { id: 1, label: "Job details" },
   { id: 2, label: "Review requirements" },
   { id: 3, label: "Add resumes" },
   { id: 4, label: "Run screening" },
 ] as const;
+
+const MAX_FILES = 20;
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const ALLOWED_FILE = /\.(pdf|docx|txt|md)$/i;
+
+interface StagedSource {
+  id: string;
+  name: string;
+  sizeLabel: string;
+  file?: File;
+  sample?: DemoResume;
+}
+
+interface IngestResponse {
+  documents: Array<{
+    name: string;
+    size: number;
+    text: string;
+    pages?: number;
+    truncated: boolean;
+  }>;
+  failed: Array<{ name: string; size: number; error: string }>;
+  error?: string;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function createScreeningStages(): WorkflowStageItem[] {
+  return [
+    {
+      id: "reading_documents",
+      label: "Reading candidate documents",
+      status: "pending",
+    },
+    {
+      id: "extracting_profiles",
+      label: "Extracting and validating structured profiles",
+      status: "pending",
+    },
+    {
+      id: "matching_scoring",
+      label: "Matching requirements and calculating scores",
+      status: "pending",
+    },
+    {
+      id: "building_queue",
+      label: "Building the explainable review queue",
+      status: "pending",
+    },
+  ];
+}
 
 export function NewScreeningWorkflow() {
   const router = useRouter();
@@ -90,17 +106,23 @@ export function NewScreeningWorkflow() {
   const [jobTitle, setJobTitle] = React.useState("Python Backend Developer");
   const [department, setDepartment] = React.useState("Core Engineering");
   const [location, setLocation] = React.useState("Kathmandu / Remote");
-  const [jobDescription, setJobDescription] = React.useState(SAMPLE_JOB_TEXT);
+  const [jobDescription, setJobDescription] =
+    React.useState(DEMO_JOB_DESCRIPTION);
   const [minExperience, setMinExperience] = React.useState(3);
 
   const [extractedRequirements, setExtractedRequirements] =
     React.useState<StructuredJobRequirements | null>(null);
   const [isExtracting, setIsExtracting] = React.useState(false);
+  const [extractionError, setExtractionError] = React.useState<string | null>(
+    null
+  );
   const [newSkillInput, setNewSkillInput] = React.useState("");
 
-  const [uploadedFiles, setUploadedFiles] = React.useState<
-    Array<{ name: string; size: string }>
+  const [stagedSources, setStagedSources] = React.useState<StagedSource[]>([]);
+  const [ingestErrors, setIngestErrors] = React.useState<
+    Array<{ name: string; error: string }>
   >([]);
+  const [runError, setRunError] = React.useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const [workflowStages, setWorkflowStages] = React.useState<WorkflowStageItem[]>([
@@ -118,31 +140,13 @@ export function NewScreeningWorkflow() {
     },
   ]);
 
-  const [screeningStages, setScreeningStages] = React.useState<WorkflowStageItem[]>([
-    {
-      id: "processing_resumes",
-      label: "Processing candidate resumes independently",
-      status: "pending",
-    },
-    {
-      id: "matching_candidates",
-      label: "Matching candidates against requirements",
-      status: "pending",
-    },
-    {
-      id: "calculating_scores",
-      label: "Calculating deterministic scores",
-      status: "pending",
-    },
-    {
-      id: "building_queue",
-      label: "Building explainable review queue",
-      status: "pending",
-    },
-  ]);
+  const [screeningStages, setScreeningStages] = React.useState<WorkflowStageItem[]>(
+    createScreeningStages
+  );
 
   const handleAnalyzeJob = async () => {
     setIsExtracting(true);
+    setExtractionError(null);
 
     setWorkflowStages([
       { id: "job_received", label: "Job description received", status: "completed" },
@@ -163,34 +167,51 @@ export function NewScreeningWorkflow() {
       },
     ]);
 
-    await new Promise((r) => setTimeout(r, 400));
+    try {
+      await new Promise((r) => setTimeout(r, 400));
 
-    const provider = getAIProvider();
-    const structured = await provider.extractJobRequirements(jobTitle, jobDescription);
-    structured.minimumExperienceYears = minExperience;
+      const provider = getAIProvider();
+      const structured = await provider.extractJobRequirements(
+        jobTitle,
+        jobDescription
+      );
+      structured.minimumExperienceYears = minExperience;
 
-    setWorkflowStages([
-      { id: "job_received", label: "Job description received", status: "completed" },
-      {
-        id: "extracting",
-        label: "Extracting structured requirements",
-        status: "completed",
-      },
-      {
-        id: "normalizing",
-        label: "Normalizing skills and experience taxonomy",
-        status: "completed",
-      },
-      {
-        id: "retrieving",
-        label: "Grounding against market requirements",
-        status: "completed",
-      },
-    ]);
+      setWorkflowStages([
+        { id: "job_received", label: "Job description received", status: "completed" },
+        {
+          id: "extracting",
+          label: "Extracting structured requirements",
+          status: "completed",
+        },
+        {
+          id: "normalizing",
+          label: "Normalizing skills and experience taxonomy",
+          status: "completed",
+        },
+        {
+          id: "retrieving",
+          label: "Grounding against market requirements",
+          status: "completed",
+        },
+      ]);
 
-    setExtractedRequirements(structured);
-    setIsExtracting(false);
-    setStep(2);
+      setExtractedRequirements(structured);
+      setStep(2);
+    } catch {
+      setWorkflowStages((previous) =>
+        previous.map((stage) =>
+          stage.status === "in_progress"
+            ? { ...stage, status: "error" }
+            : stage
+        )
+      );
+      setExtractionError(
+        "The local extractor could not read this description. Try again, or write a more specific job description."
+      );
+    } finally {
+      setIsExtracting(false);
+    }
   };
 
   const handleRemoveRequirement = (id: string, isRequired: boolean) => {
@@ -261,118 +282,291 @@ export function NewScreeningWorkflow() {
 
   const handleFilesSelected = (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
-    const staged = Array.from(fileList).map((f) => ({
-      name: f.name,
-      size: `${Math.max(1, Math.round(f.size / 1024))} KB`,
-    }));
-    setUploadedFiles(staged);
+
+    const errors: Array<{ name: string; error: string }> = [];
+    const accepted: File[] = [];
+
+    for (const file of Array.from(fileList)) {
+      if (!ALLOWED_FILE.test(file.name)) {
+        errors.push({
+          name: file.name,
+          error: "Unsupported type. Use PDF, DOCX, TXT, or MD.",
+        });
+        continue;
+      }
+      if (file.size === 0) {
+        errors.push({ name: file.name, error: "The file is empty." });
+        continue;
+      }
+      if (file.size > MAX_FILE_BYTES) {
+        errors.push({
+          name: file.name,
+          error: "Files must be 10 MB or smaller.",
+        });
+        continue;
+      }
+      accepted.push(file);
+    }
+
+    if (accepted.length === 0) {
+      setIngestErrors(errors);
+      return;
+    }
+
+    // Uploading real documents replaces the sample set so the run has one
+    // unambiguous source. Existing uploaded files are kept and appended.
+    const existing = stagedSources.filter((source) => !source.sample);
+    const remainingSlots = Math.max(0, MAX_FILES - existing.length);
+
+    if (accepted.length > remainingSlots) {
+      errors.push({
+        name: "Upload limit",
+        error: `You can screen up to ${MAX_FILES} documents at once.`,
+      });
+    }
+
+    const nextSources: StagedSource[] = accepted
+      .slice(0, remainingSlots)
+      .map((file, index) => ({
+        id: `file-${Date.now()}-${index}`,
+        name: file.name,
+        sizeLabel: formatFileSize(file.size),
+        file,
+      }));
+
+    setStagedSources([...existing, ...nextSources]);
+    setIngestErrors(errors);
+    setRunError(null);
   };
 
   const loadSamplePool = () => {
-    setUploadedFiles(
-      DEMO_RESUME_POOL.map((p) => ({
-        name: `${p.name.replace(/\s+/g, "_")}_Resume.pdf`,
-        size: "48 KB",
+    setStagedSources(
+      DEMO_RESUME_POOL.map((sample, index) => ({
+        id: `sample-${index}`,
+        name: `${sample.name.replace(/\s+/g, "_")}_Resume.pdf`,
+        sizeLabel: "Sample",
+        sample,
       }))
+    );
+    setIngestErrors([]);
+    setRunError(null);
+  };
+
+  const handleRemoveSource = (id: string) => {
+    setStagedSources((previous) =>
+      previous.filter((source) => source.id !== id)
     );
   };
 
   const handleRunScreening = async () => {
-    setStep(4);
+    if (!extractedRequirements) {
+      setRunError("Extract the job requirements before screening.");
+      setStep(4);
+      return;
+    }
 
-    const updateStage = (idx: number, status: "in_progress" | "completed") => {
-      setScreeningStages((prev) =>
-        prev.map((stage, i) => (i === idx ? { ...stage, status } : stage))
+    if (extractedRequirements.requiredSkills.length === 0) {
+      setRunError("Add at least one required skill before screening.");
+      setStep(4);
+      return;
+    }
+
+    if (stagedSources.length === 0) return;
+
+    setRunError(null);
+    setIngestErrors([]);
+    setStep(4);
+    setScreeningStages(createScreeningStages());
+
+    const updateStage = (
+      stageId: string,
+      status: WorkflowStageItem["status"]
+    ) => {
+      setScreeningStages((previous) =>
+        previous.map((stage) =>
+          stage.id === stageId ? { ...stage, status } : stage
+        )
       );
     };
 
-    updateStage(0, "in_progress");
-    await new Promise((r) => setTimeout(r, 600));
-    updateStage(0, "completed");
-
-    updateStage(1, "in_progress");
-    await new Promise((r) => setTimeout(r, 700));
-    updateStage(1, "completed");
-
-    updateStage(2, "in_progress");
-    await new Promise((r) => setTimeout(r, 600));
-    updateStage(2, "completed");
-
-    const reqsToMatch = {
-      id: `job-req-${Date.now()}`,
-      title: jobTitle,
-      rawDescription: jobDescription,
-      minimumExperienceYears: minExperience,
-      requiredSkills:
-        extractedRequirements?.requiredSkills.map((r) => ({
-          id: r.id,
-          name: r.name,
-          type: "required_skill" as const,
-        })) || [],
-      preferredSkills:
-        extractedRequirements?.preferredSkills.map((r) => ({
-          id: r.id,
-          name: r.name,
-          type: "preferred_skill" as const,
-        })) || [],
-      responsibilities: extractedRequirements?.responsibilities || [],
-    };
-
-    const calculatedCandidates: CandidateScoreResult[] = DEMO_RESUME_POOL.map(
-      (c, i) => {
-        const extraction = {
-          id: `cand-${i + 1}`,
-          name: c.name,
-          totalExperienceYears: c.years,
-          skills: c.skills.map((s) => ({ name: s, level: "Strong" as const })),
-          experience: [
-            {
-              company: "Tech Org",
-              title: "Software Engineer",
-              startDate: "2023-01",
-              years: c.years,
-              description: c.text,
-              technologies: c.skills,
-            },
-          ],
-          education: [
-            { institution: "University", degree: "BE", field: "Computer Science" },
-          ],
-          rawResumeText: c.text,
-        };
-
-        return calculateFinalMatchScore(
-          extraction,
-          reqsToMatch,
-          DEFAULT_SCORING_WEIGHTS
-        );
-      }
-    ).sort((a, b) => b.totalScore - a.totalScore);
-
-    updateStage(3, "in_progress");
-    await new Promise((r) => setTimeout(r, 500));
-    updateStage(3, "completed");
-
     const newJobId = `screening-${Date.now().toString(36)}`;
-    const newScreening: JobScreening = {
-      id: newJobId,
+    const requirements = structuredJobToRequirements(extractedRequirements, {
+      id: `job-req-${newJobId}`,
       title: jobTitle,
       department,
       location,
-      createdAt: new Date().toISOString(),
-      status: "ready",
-      candidateCount: calculatedCandidates.length,
-      reviewedCount: 0,
-      shortlistedCount: 0,
-      requirements: reqsToMatch,
-      candidates: calculatedCandidates,
-    };
+      rawDescription: jobDescription,
+    });
 
-    addScreening(newScreening);
+    let currentStage = "reading_documents";
 
-    setTimeout(() => {
+    try {
+      // 1. Resolve candidate text. Sample entries are already text; uploaded
+      // files are parsed server-side so the browser never has to read PDFs.
+      updateStage("reading_documents", "in_progress");
+
+      const sources: Array<{ name: string; text: string }> = stagedSources
+        .filter((source) => source.sample)
+        .map((source) => ({
+          name: source.sample!.name,
+          text: source.sample!.text,
+        }));
+
+      const fileSources = stagedSources.filter((source) => source.file);
+      const parseFailures: Array<{ name: string; error: string }> = [];
+      const truncatedDocuments: string[] = [];
+
+      if (fileSources.length > 0) {
+        const formData = new FormData();
+        for (const source of fileSources) {
+          if (source.file) {
+            formData.append("files", source.file, source.file.name);
+          }
+        }
+
+        const response = await fetch("/api/ingest", {
+          method: "POST",
+          body: formData,
+        });
+        const payload = (await response.json()) as IngestResponse;
+
+        if (!response.ok) {
+          throw new Error(
+            payload.error || "The uploaded documents could not be read."
+          );
+        }
+
+        for (const document of payload.documents) {
+          sources.push({ name: document.name, text: document.text });
+          if (document.truncated) truncatedDocuments.push(document.name);
+        }
+        parseFailures.push(...payload.failed);
+        if (parseFailures.length > 0) setIngestErrors(parseFailures);
+      }
+
+      if (sources.length === 0) {
+        throw new Error(
+          parseFailures.length > 0
+            ? "None of the staged documents could be read. Review the errors below."
+            : "No candidate text was available to screen."
+        );
+      }
+
+      updateStage("reading_documents", "completed");
+
+      // 2. Each candidate is extracted, validated, matched, and scored
+      // independently. One malformed resume cannot abort the run.
+      currentStage = "extracting_profiles";
+      updateStage("extracting_profiles", "in_progress");
+
+      const candidates: CandidateScoreResult[] = [];
+      const candidateFailures: Array<{ name: string; error: string }> = [];
+
+      for (let index = 0; index < sources.length; index++) {
+        const source = sources[index];
+        try {
+          const candidate = await screenCandidateText({
+            candidateId: `cand-${newJobId}-${index + 1}`,
+            name: source.name.replace(/\.(pdf|docx|txt|md)$/i, ""),
+            text: source.text,
+            requirements,
+          });
+          candidates.push(candidate);
+        } catch (error) {
+          candidateFailures.push({
+            name: source.name,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Candidate extraction failed.",
+          });
+        }
+      }
+
+      if (candidates.length === 0) {
+        throw new Error(
+          "No candidates could be extracted from the staged documents."
+        );
+      }
+
+      updateStage("extracting_profiles", "completed");
+
+      // 3. Matching and scoring happened inside the deterministic engine for
+      // each candidate. This stage records that the work is complete.
+      currentStage = "matching_scoring";
+      updateStage("matching_scoring", "in_progress");
+      updateStage("matching_scoring", "completed");
+
+      if (candidateFailures.length > 0) {
+        setIngestErrors((previous) => [
+          ...previous,
+          ...candidateFailures.map((failure) => ({
+            name: failure.name,
+            error: `Could not score: ${failure.error}`,
+          })),
+        ]);
+      }
+
+      // 4. Sort and hand the queue to human review.
+      currentStage = "building_queue";
+      updateStage("building_queue", "in_progress");
+      candidates.sort((a, b) => b.totalScore - a.totalScore);
+
+      const processingNotes: string[] = [];
+      if (parseFailures.length > 0) {
+        processingNotes.push(
+          `${parseFailures.length} document(s) could not be read: ${parseFailures
+            .map((failure) => failure.name)
+            .join(", ")}.`
+        );
+      }
+      if (truncatedDocuments.length > 0) {
+        processingNotes.push(
+          `${truncatedDocuments.length} document(s) exceeded the text limit and were truncated: ${truncatedDocuments
+            .join(", ")}.`
+        );
+      }
+      if (candidateFailures.length > 0) {
+        processingNotes.push(
+          `${candidateFailures.length} candidate(s) could not be scored: ${candidateFailures
+            .map((failure) => failure.name)
+            .join(", ")}.`
+        );
+      }
+
+      const newScreening: JobScreening = {
+        id: newJobId,
+        title: jobTitle,
+        department,
+        location,
+        createdAt: new Date().toISOString(),
+        status: "ready",
+        candidateCount: candidates.length,
+        reviewedCount: 0,
+        shortlistedCount: 0,
+        requirements,
+        candidates,
+        isSample: stagedSources.some((source) => source.sample) || undefined,
+        processingNotes:
+          processingNotes.length > 0 ? processingNotes : undefined,
+      };
+
+      addScreening(newScreening);
+      updateStage("building_queue", "completed");
+      await new Promise((resolve) => setTimeout(resolve, 250));
       router.push(`/recruitment/${newJobId}`);
-    }, 700);
+    } catch (error) {
+      setRunError(
+        error instanceof Error
+          ? error.message
+          : "The screening run could not be completed."
+      );
+      setScreeningStages((previous) =>
+        previous.map((stage) =>
+          stage.id === currentStage ? { ...stage, status: "error" } : stage
+        )
+      );
+    }
   };
 
   const requirementGroups = extractedRequirements
@@ -497,7 +691,7 @@ export function NewScreeningWorkflow() {
             <div>
               <button
                 type="button"
-                onClick={() => setJobDescription(SAMPLE_JOB_TEXT)}
+                onClick={() => setJobDescription(DEMO_JOB_DESCRIPTION)}
                 className="rounded-sm text-[13px] font-medium text-nirman-accent hover:text-nirman-accent-hover"
               >
                 Use the sample description
@@ -511,6 +705,10 @@ export function NewScreeningWorkflow() {
                   title="Extraction pipeline"
                 />
               </div>
+            )}
+
+            {extractionError && (
+              <Callout tone="danger">{extractionError}</Callout>
             )}
 
             <div className="flex items-center justify-end border-t border-nirman-border pt-4">
@@ -552,6 +750,14 @@ export function NewScreeningWorkflow() {
             </Button>
           </CardHeader>
           <CardContent className="space-y-7">
+            {extractedRequirements.requiredSkills.length === 0 &&
+              extractedRequirements.preferredSkills.length === 0 && (
+                <Callout tone="warning" title="No requirements recognized">
+                  The local extractor only reports what it can recognize. Add at
+                  least one required skill below before screening.
+                </Callout>
+              )}
+
             {requirementGroups.map((group) => (
               <div key={group.title} className="space-y-2.5">
                 <div className="flex items-center justify-between">
@@ -668,7 +874,8 @@ export function NewScreeningWorkflow() {
             <div>
               <CardTitle>Add resumes</CardTitle>
               <p className="mt-0.5 text-[13px] text-nirman-text-secondary">
-                Screening against <strong className="font-medium text-nirman-dark">{jobTitle}</strong> ·{" "}
+                Screening against{" "}
+                <strong className="font-medium text-nirman-dark">{jobTitle}</strong> ·{" "}
                 {minExperience}+ years
               </p>
             </div>
@@ -690,7 +897,7 @@ export function NewScreeningWorkflow() {
                 Drop resumes here
               </span>
               <span className="mt-1 text-xs text-nirman-text-muted">
-                PDF, DOCX, or TXT
+                PDF, DOCX, TXT, or MD · up to {MAX_FILES} files · 10 MB each
               </span>
 
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
@@ -712,23 +919,43 @@ export function NewScreeningWorkflow() {
                 id="resume-upload"
                 type="file"
                 multiple
-                accept=".pdf,.doc,.docx,.txt"
+                accept=".pdf,.docx,.txt,.md"
+                aria-label="Choose resume files"
                 className="sr-only"
                 onChange={(e) => handleFilesSelected(e.target.files)}
               />
             </div>
 
-            {uploadedFiles.length > 0 && (
+            {ingestErrors.length > 0 && (
+              <Callout tone="warning" title="Some documents were not accepted">
+                <ul className="space-y-1">
+                  {ingestErrors.map((item, index) => (
+                    <li key={`${item.name}-${index}`}>
+                      <span className="font-medium">{item.name}:</span>{" "}
+                      {item.error}
+                    </li>
+                  ))}
+                </ul>
+              </Callout>
+            )}
+
+            {stagedSources.length > 0 && (
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-3">
                   <span className="text-[13px] font-medium text-nirman-dark">
-                    {uploadedFiles.length} documents staged
+                    {stagedSources.length} document
+                    {stagedSources.length === 1 ? "" : "s"} staged
+                  </span>
+                  <span className="text-xs text-nirman-text-muted">
+                    {stagedSources.some((source) => source.sample)
+                      ? "Sample candidate set · fictional demo data"
+                      : "Parsed on the server at run time"}
                   </span>
                 </div>
-                <ul className="max-h-44 divide-y divide-nirman-border overflow-y-auto rounded-md border border-nirman-border">
-                  {uploadedFiles.map((f, idx) => (
+                <ul className="max-h-52 divide-y divide-nirman-border overflow-y-auto rounded-md border border-nirman-border">
+                  {stagedSources.map((source) => (
                     <li
-                      key={idx}
+                      key={source.id}
                       className="flex items-center justify-between gap-3 px-3 py-2 text-[13px]"
                     >
                       <span className="flex min-w-0 items-center gap-2">
@@ -736,10 +963,22 @@ export function NewScreeningWorkflow() {
                           className="h-3.5 w-3.5 shrink-0 text-nirman-text-muted"
                           aria-hidden
                         />
-                        <span className="truncate text-nirman-dark">{f.name}</span>
+                        <span className="truncate text-nirman-dark">
+                          {source.name}
+                        </span>
                       </span>
-                      <span className="shrink-0 text-xs tabular-nums text-nirman-text-muted">
-                        {f.size}
+                      <span className="flex shrink-0 items-center gap-2">
+                        <span className="text-xs tabular-nums text-nirman-text-muted">
+                          {source.sizeLabel}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSource(source.id)}
+                          aria-label={`Remove ${source.name}`}
+                          className="rounded-sm p-1 text-nirman-text-muted transition-colors hover:bg-nirman-danger-bg hover:text-nirman-danger-text"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
                       </span>
                     </li>
                   ))}
@@ -748,18 +987,23 @@ export function NewScreeningWorkflow() {
             )}
 
             <Callout tone="neutral" icon={Info}>
-              This demo evaluates a bundled sample candidate set. Uploaded files are
-              staged but not parsed yet.
+              Documents are parsed on the server. The configured local provider then
+              extracts structured evidence, and deterministic code matches and scores
+              each candidate. Files are not stored after the run.
             </Callout>
 
             <div className="flex items-center justify-between border-t border-nirman-border pt-4">
               <span className="text-xs text-nirman-text-muted">
-                {uploadedFiles.length} staged
+                {stagedSources.length} staged ·{" "}
+                {stagedSources.filter((source) => source.file).length} to parse
               </span>
               <Button
                 variant="primary"
                 onClick={handleRunScreening}
-                disabled={uploadedFiles.length === 0}
+                disabled={
+                  stagedSources.length === 0 ||
+                  (extractedRequirements?.requiredSkills.length ?? 0) === 0
+                }
               >
                 Run screening
                 <ArrowRight className="h-4 w-4" />
@@ -774,17 +1018,55 @@ export function NewScreeningWorkflow() {
         <Card>
           <CardHeader>
             <div>
-              <CardTitle>Running screening</CardTitle>
+              <CardTitle>
+                {runError ? "Screening stopped" : "Running screening"}
+              </CardTitle>
               <p className="mt-0.5 text-[13px] text-nirman-text-secondary">
-                Matching and scoring every candidate deterministically.
+                {runError
+                  ? "No results were saved. Fix the issue and run again."
+                  : "Reading documents, extracting evidence, then matching and scoring deterministically."}
               </p>
             </div>
           </CardHeader>
           <CardContent className="space-y-6 py-6">
             <WorkflowStatus stages={screeningStages} title="Pipeline" />
-            <p className="text-center text-xs text-nirman-text-muted">
-              Redirecting to the shortlist when complete…
-            </p>
+
+            {ingestErrors.length > 0 && (
+              <Callout tone="warning" title="Some documents were skipped">
+                <ul className="space-y-1">
+                  {ingestErrors.map((item, index) => (
+                    <li key={`${item.name}-${index}`}>
+                      <span className="font-medium">{item.name}:</span>{" "}
+                      {item.error}
+                    </li>
+                  ))}
+                </ul>
+              </Callout>
+            )}
+
+            {runError ? (
+              <div className="space-y-4">
+                <Callout tone="danger" title="The screening run could not complete">
+                  {runError}
+                </Callout>
+                <div className="flex justify-center">
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setRunError(null);
+                      setStep(3);
+                    }}
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                    Back to documents
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-center text-xs text-nirman-text-muted">
+                Redirecting to the shortlist when complete…
+              </p>
+            )}
           </CardContent>
         </Card>
       )}

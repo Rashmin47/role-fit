@@ -2,6 +2,7 @@ import {
   StructuredJobRequirements,
   CandidateProfile,
   validateJobRequirementsOutput,
+  validateCandidateProfileOutput,
 } from "./schemas";
 import { MockAIProvider } from "./mock-provider";
 import {
@@ -85,11 +86,22 @@ ${rawResumeText.slice(0, 3000)}`;
       if (!res.ok) throw new Error(`Ollama HTTP error: ${res.status}`);
       const data = await res.json();
       const parsed = JSON.parse(data.response);
-      return {
-        ...parsed,
-        confidence: 0.92,
-        extractedAt: new Date().toISOString(),
-      };
+      const validated = validateCandidateProfileOutput(
+        {
+          confidence: 0.92,
+          extractedAt: new Date().toISOString(),
+          ...parsed,
+        },
+        candidateNameHint
+      );
+
+      if (validated.valid && validated.data) {
+        return validated.data;
+      }
+      return this.fallback.extractCandidateProfile(
+        rawResumeText,
+        candidateNameHint
+      );
     } catch {
       return this.fallback.extractCandidateProfile(rawResumeText, candidateNameHint);
     }

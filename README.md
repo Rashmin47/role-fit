@@ -18,8 +18,11 @@ Candidates often prepare against generic advice instead of the requirements empl
 Role Fit turns that unstructured information into a shared, inspectable model:
 
 ```text
-Job description / resume text
+Job description / PDF · DOCX · TXT · MD
         │
+        ▼
+Server text extraction                 /api/ingest · unpdf · mammoth
+        │  per-file failures and limits
         ▼
 AI extraction (mock | ollama)          unstructured → typed JSON
         │  validated at the boundary (lib/ai/schemas.ts)
@@ -52,17 +55,17 @@ The product thesis is fully implemented end to end, but the screening path still
 | --- | --- |
 | Landing page, dashboard shell, UI system | ✅ Implemented |
 | Career Intelligence, Company Intelligence | ✅ Implemented with **sample market data** |
-| 4-step new-screening wizard | ✅ UI complete; runs the bundled demo candidate pool |
+| 4-step new-screening wizard | ✅ UI complete; screens uploaded documents or the labelled sample set |
 | Candidate table, detail, evidence citations | ✅ Implemented |
 | Deterministic matching, scoring, routing | ✅ Implemented and tested |
-| Mock + Ollama providers | ✅ Implemented; mock output is demo-quality |
+| Mock + Ollama providers | ✅ Implemented; both candidate and job output are validated |
 | Batch pipeline | ✅ Implemented; **not wired to the wizard** |
 | Persistence | ⚠️ Browser `localStorage` only |
 | Prisma schema + seed | ⚠️ Work in progress; the app does **not** read/write the DB yet |
-| Resume upload/parsing | ❌ File metadata only; no PDF/DOCX text extraction |
+| Resume upload/parsing | ✅ PDF/DOCX/TXT/MD parsed server-side; no OCR for scanned PDFs |
 | Authentication, organizations, RBAC | ❌ None yet |
 
-Concretely: uploading resumes records names and sizes, but "Run Screening Pipeline" scores `DEMO_RESUME_POOL`. The mock provider fabricates default experience and education. Screenings and decisions live in `localStorage`. Market data comes from `lib/data/sample-data.ts` and is always labelled **Sample**.
+Concretely: uploaded files go to `/api/ingest`, where PDF/DOCX/TXT/MD text is extracted and invalid files are reported individually. The wizard then screens each candidate through the validated offline extractor and the deterministic engine. Sample mode skips the upload and uses fictional fixtures, and the resulting screening is labelled **Sample**. Files are parsed per run and not stored. Candidate/provider extraction still runs in the browser, so the implemented Ollama provider is not yet wired through a server route. Screenings and decisions live in `localStorage`. Market data comes from `lib/data/sample-data.ts` and is always labelled **Sample**.
 
 Closing these gaps is the job of [`docs/ROADMAP.md`](./docs/ROADMAP.md).
 

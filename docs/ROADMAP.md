@@ -4,7 +4,7 @@
 >
 > This roadmap is grounded in the original product plan (the six AI capability areas: structured extraction, routing logic, tool calling, multi-step pipeline, retrieval grounding, and batch processing) and the current implementation status.
 >
-> Last verified: 2026-10-19.
+> Last verified: 2026-10-25.
 
 ---
 
@@ -16,8 +16,10 @@
 - Career Intelligence with role selection, requirement frequencies, experience brackets, priorities, and gap analysis (sample dataset).
 - Company Intelligence (sample dataset).
 - Recruitment workspace: screenings list, 4-step new-screening wizard, shortlist table, candidate detail with requirement-by-requirement citations, gap explanations, human decision + notes.
+- Server-side PDF/DOCX/TXT/MD text extraction at `/api/ingest`, with per-file failures, size/count limits, and no file persistence.
+- Honest offline candidate heuristics: no fabricated employers, degrees, or experience years; skill evidence is cited from resume lines.
 - Deterministic normalization, matching, scoring, and routing.
-- Offline mock provider + Ollama provider with fallback.
+- Offline mock provider + Ollama provider with fallback; candidate output is validated before scoring.
 - Batch pipeline class (not wired to UI).
 - Tool registry (not wired to UI/provider).
 - Prisma 7 schema + seed (not wired to app).
@@ -27,13 +29,13 @@
 
 ### The honest gap
 
-The product demonstrates the thesis, but the screening path is still a demo:
+The product now screens real uploaded documents, but the path is not yet production-grade:
 
-- uploads are metadata only,
-- the wizard scores a fixed demo pool,
-- the mock extractor fabricates default experience/education,
-- persistence is browser-local,
-- market data is static.
+- PDF/DOCX/TXT/MD files are parsed per run; file contents are not persisted and there is no OCR for scanned/image-only PDFs.
+- Candidate extraction still runs in the browser through the mock provider. Ollama is implemented but not wired through a server route, so it would require CORS and cannot use the server-only `AI_PROVIDER` value from the client.
+- The wizard screens uploaded candidates directly; the `lib/batch` pipeline and Prisma-backed `ScoringRun`/`CandidateProcessingJob` model are still not wired.
+- Persistence is browser-local, market data is static, and there is no authentication or organization scoping.
+- Job-requirement extraction remains heuristic. It no longer invents fallback requirements, but it can misread complex phrasing; recruiters can edit the requirement list before screening.
 
 Closing that gap is the roadmap.
 
@@ -53,7 +55,7 @@ Closing that gap is the roadmap.
 # Phase 1 — Correctness & foundation
 
 **Goal:** make the existing product honest and maintainable before adding infrastructure.
-**Exit criteria:** one type system, validated candidate output, server-side extraction, durable-enough settings, and a real test runner.
+**Exit criteria:** one type system, validated candidate output, server-side provider extraction, durable-enough settings, and a real test runner.
 
 ### 1.1 Unify the domain types
 
@@ -77,7 +79,7 @@ Closing that gap is the roadmap.
 
 ---
 
-### 1.2 Validate candidate extraction
+### 1.2 Validate candidate extraction ✅
 
 **Problem:** job output is validated; candidate output is not.
 
@@ -95,6 +97,8 @@ Closing that gap is the roadmap.
 - No unvalidated provider payload reaches `evaluateCandidateMatch` or `calculateFinalMatchScore`.
 
 **Files:** `lib/ai/schemas.ts`, `lib/ai/ollama-provider.ts`, `lib/tests/engine.test.ts`.
+
+**Status (2026-10-25):** shipped. `validateCandidateProfileOutput()` repairs or rejects malformed payloads; the Ollama provider validates and falls back to the mock; the wizard isolates per-candidate failures. Tests cover repair, clamping, string skills, and fabricated-default regressions.
 
 ---
 
@@ -301,7 +305,7 @@ Closing that gap is the roadmap.
 **Goal:** upload real resumes, extract real text, process 10–200+ candidates, and keep failures isolated.
 **Exit criteria:** a user uploads PDFs/DOCX, sees progress, and gets persisted, cited results without fabricated data.
 
-### 3.1 Upload pipeline
+### 3.1 Upload pipeline — partial ✅
 
 - `app/api/upload/route.ts` with:
   - max file size and count,
@@ -318,7 +322,9 @@ Closing that gap is the roadmap.
 
 **Acceptance criteria:** corrupt/encrypted/scanned PDFs fail gracefully with a recoverable error; no file is executed; text extraction is testable with fixtures; uploads are organization-scoped.
 
-### 3.2 Wire the batch pipeline
+**Status (2026-10-25):** implemented as `app/api/ingest/route.ts`. It validates extension and magic bytes, limits runs to 20 files / 10 MB per file / 50 MB per request / 200k characters per document, rate-limits in memory, parses PDF with `unpdf`, DOCX with `mammoth`, and TXT/MD directly, and returns per-file failures. It does **not** persist files, scope uploads to an organization, OCR scanned PDFs, or deduplicate candidates.
+
+### 3.2 Wire the batch pipeline — partial ✅
 
 - Replace `DEMO_RESUME_POOL` with uploaded candidates.
 - Create a `ScoringRun` and one `CandidateProcessingJob` per candidate.
@@ -329,7 +335,9 @@ Closing that gap is the roadmap.
 
 **Acceptance criteria:** 50-resume run shows accurate progress; one malformed resume does not fail the batch; re-running is idempotent; results are visible after reload; the run records provider/model/weights.
 
-### 3.3 Real candidate extraction
+**Status (2026-10-25):** the wizard now screens uploaded documents, not `DEMO_RESUME_POOL`. Each candidate is extracted, validated, matched, and scored independently through `lib/screening/screen-candidate.ts`; failures are reported per file/candidate and one bad document does not abort the run. Progress is local UI state, not streamed. The `lib/batch` class and Prisma `ScoringRun`/`CandidateProcessingJob` records are still not wired.
+
+### 3.3 Real candidate extraction — partial ✅
 
 - Validate candidate output (Phase 1.2).
 - Remove fabricated defaults from the mock provider; return only what is present.
@@ -338,6 +346,8 @@ Closing that gap is the roadmap.
 - Support multiple resumes per candidate and deduplicate by email/phone.
 
 **Acceptance criteria:** no fabricated companies/degrees; every skill has an evidence snippet or is marked absent; duplicate uploads are detected.
+
+**Status (2026-10-25):** the mock provider now uses `lib/ai/resume-heuristics.ts`. It extracts only what the text supports, cites the line for every skill, derives closed date ranges and `Present` roles as of extraction time, and leaves missing fields empty. Experience years are explicit when stated; otherwise they are derived from date ranges and stored in the score result. Duplicate uploads and multi-resume candidates are still open.
 
 ### 3.4 Operations
 

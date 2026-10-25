@@ -3,7 +3,7 @@
 > **Operating manual for AI agents and new engineers.**
 > Read this file before changing code. Then read the focused docs in [`docs/`](./docs/).
 >
-> Last verified: **2026-10-19** · Next.js **16.4.2** · React **19.3.1** · TypeScript **5.9.3** · Tailwind CSS **4.3.3** · Prisma **7.10.1** · Node **22.x**
+> Last verified: **2026-10-25** · Next.js **16.4.2** · React **19.3.1** · TypeScript **5.9.3** · Tailwind CSS **4.3.3** · Prisma **7.10.1** · Node **22.x**
 
 ---
 
@@ -63,32 +63,37 @@ Use this as the source of truth before planning work.
 | UI primitives + design tokens | ✅ Implemented | `components/ui/`, `app/globals.css` |
 | Career Intelligence views | ✅ Implemented with sample data | `app/(dashboard)/career-intelligence/`, `components/career/` |
 | Company Intelligence | ✅ Implemented with sample data | `app/(dashboard)/insights/page.tsx` |
-| New screening workflow (4 steps) | ✅ UI complete, demo pipeline only | `components/recruitment/NewScreeningWorkflow.tsx` |
+| New screening workflow (4 steps) | ✅ UI complete; screens uploads or the labelled sample set | `components/recruitment/NewScreeningWorkflow.tsx` |
 | Candidate table, detail, citations | ✅ Implemented | `components/recruitment/` |
 | Deterministic scoring/matching/routing | ✅ Implemented + tested | `lib/scoring`, `lib/matching`, `lib/routing` |
 | Skill normalization | ✅ Implemented (curated alias map) | `lib/normalization/skills.ts` |
-| Offline mock extractor | ✅ Implemented, **demo-quality** | `lib/ai/mock-provider.ts` |
-| Ollama provider | ✅ Implemented, not production-hardened | `lib/ai/ollama-provider.ts` |
+| Offline mock extractor | ✅ Honest heuristics; no fabricated defaults | `lib/ai/mock-provider.ts`, `lib/ai/resume-heuristics.ts` |
+| Candidate output validation | ✅ Repair/reject + warnings | `validateCandidateProfileOutput()` in `lib/ai/schemas.ts` |
+| Ollama provider | ✅ Implemented; validates job + candidate output, falls back | `lib/ai/ollama-provider.ts` |
 | Batch screening pipeline | ✅ Implemented, **not wired to UI** | `lib/batch/index.ts` |
+| Per-candidate screening orchestration | ✅ Implemented | `lib/screening/screen-candidate.ts` |
+| Document ingestion route | ✅ PDF/DOCX/TXT/MD, per-file failures, limits | `app/api/ingest/route.ts` |
 | Retrieval / market grounding | ⚠️ Static sample repository, not real ingestion | `lib/retrieval/index.ts` |
 | Tool registry | ⚠️ Implemented, not wired to UI or provider | `lib/tools/index.ts` |
 | Persistence | ⚠️ Browser `localStorage` only | `lib/store/screening-store.ts` |
 | Prisma schema + seed | ⚠️ Schema/seed work, **app does not read/write DB** | `prisma/` |
-| Resume file upload/parsing | ❌ File names only; no PDF/DOCX text extraction | `NewScreeningWorkflow.tsx` |
+| Resume file upload/parsing | ✅ PDF/DOCX/TXT/MD server-side; **no OCR** | `app/api/ingest/route.ts` |
 | Settings persistence | ❌ Provider/weights selections are not saved | `app/(dashboard)/settings/page.tsx` |
-| API routes / server actions | ❌ None | — |
+| API routes / server actions | ⚠️ Only `/api/ingest` | `app/api/ingest/route.ts` |
 | Authentication / organizations / RBAC | ❌ None (shell displays a demo workspace) | — |
-| Automated test runner | ⚠️ Custom assertion script, no Vitest/Playwright | `lib/tests/engine.test.ts` |
+| Automated test runner | ⚠️ Custom assertion script (45 assertions), no Vitest/Playwright | `lib/tests/engine.test.ts` |
 | CI | ✅ GitHub Actions verify workflow | `.github/workflows/ci.yml` |
 
-### The most important known gap
+### The most important known gaps
 
-The current screening flow is a **high-fidelity demonstration**, not a production pipeline:
+Real ingestion is wired, but the path is **not production-grade**:
 
-- Uploading resumes records only `name` and `size`; file contents are never read.
-- "Run Screening Pipeline" always scores the bundled `DEMO_RESUME_POOL`, regardless of which files were staged.
-- The mock provider fabricates default experience/education records when parsing a resume.
+- Candidate/provider extraction still runs in the browser. The wizard uses the mock provider today; Ollama would need a server route (and no server-only `AI_PROVIDER` value reaches the client).
+- Uploaded files are parsed per run and not persisted. There is no OCR for scanned/image-only PDFs, no duplicate detection, and no multi-resume candidate merge.
+- The wizard screens candidates directly through `lib/screening`. The `lib/batch` pipeline and Prisma `ScoringRun` / `CandidateProcessingJob` records are still not wired.
 - New screenings and decisions live in `localStorage`, not the database.
+- Job-requirement extraction is heuristic. It no longer invents fallback requirements, but recruiters must review the extracted list.
+- There is no authentication, organization scoping, or RBAC.
 
 Do not claim these are complete. The roadmap exists to close them.
 
@@ -97,8 +102,14 @@ Do not claim these are complete. The roadmap exists to close them.
 ## 4. Architecture at a glance
 
 ```text
-Job description / resume text
+Job description / PDF / DOCX / TXT / MD
         │
+        ▼
+┌──────────────────────────────┐
+│ Server text extraction       │  app/api/ingest/route.ts
+│ PDF / DOCX / TXT / MD        │  unpdf | mammoth | UTF-8
+└──────────────────────────────┘
+        │  per-file failures + truncation flags
         ▼
 ┌──────────────────────────────┐
 │ AI extraction (provider)     │  lib/ai/*
@@ -135,7 +146,7 @@ Job description / resume text
    Human review in the UI  →  decision + notes persisted
 ```
 
-The orchestrators are `lib/pipeline/index.ts` (extraction + grounding) and `lib/batch/index.ts` (per-candidate extraction → match → score → route).
+The orchestrators are `lib/screening/screen-candidate.ts` (resume text → validate → match → score → route, used by the wizard), `lib/pipeline/index.ts` (extraction + grounding), and `lib/batch/index.ts` (batch extraction → match → score → route, not wired to the UI).
 
 For deep detail see:
 - [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)
@@ -152,6 +163,7 @@ app/
   layout.tsx                    Root fonts/metadata
   globals.css                   Tailwind v4 CSS-first theme + base styles
   page.tsx                      Marketing landing page
+  api/ingest/route.ts           Server-side PDF/DOCX/TXT/MD → text
   (dashboard)/
     layout.tsx                  AppShell wrapper
     dashboard/                  Overview
@@ -167,6 +179,8 @@ components/
   career/                       RoleSelector, MarketRequirementsView
 lib/
   ai/                           Provider interface, schemas, mock, ollama, prompts
+  ai/resume-heuristics.ts       Honest offline resume extraction + evidence lines
+  screening/screen-candidate.ts Resume text → validate → match → score → route
   matching/                     Requirement ↔ candidate evidence evaluation
   scoring/                      Deterministic weighted scoring
   routing/                      Queue classification
@@ -176,6 +190,7 @@ lib/
   pipeline/                     Extraction + grounding coordinator
   tools/                        Deterministic tool registry (future function calling)
   data/sample-data.ts           All demo roles, screenings, candidates, companies
+  data/demo-resumes.ts          Fictional sample resumes + sample job description
   store/screening-store.ts      Shared localStorage-backed client store
   tests/engine.test.ts          Assertion-based engine test suite
   utils.ts                      cn(), formatters
@@ -195,7 +210,7 @@ docs/                           Architecture, engine, data model, roadmap
 | **Pipeline / AI contracts** | `lib/ai/schemas.ts` (`StructuredJobRequirements`, `CandidateProfile`, `ExtractedRequirement`) | Extraction, matching, scoring inputs, batch pipeline |
 | **Presentation / domain** | `types/index.ts` (`JobRequirements`, `CandidateExtraction`, `CandidateScoreResult`, `JobScreening`, market types) | UI props, store, sample data, legacy scoring API |
 
-These overlap and are **not yet unified**. Current flow: AI contracts are converted into the presentation shapes in `lib/batch/index.ts` and `NewScreeningWorkflow.tsx`. When unifying them, do it deliberately and update both the engine tests and the UI — do not add a third shape.
+These overlap and are **not yet unified**. Current flow: AI contracts are converted into the presentation shapes in `lib/screening/screen-candidate.ts` (`structuredJobToRequirements`, `candidateProfileToExtraction`), `lib/batch/index.ts`, and `NewScreeningWorkflow.tsx`. When unifying them, do it deliberately and update both the engine tests and the UI — do not add a third shape.
 
 ---
 
@@ -280,8 +295,11 @@ Needs Verification  : otherwise
 - Candidate skills are matched against requirement names via `normalizeSkillName()` + bidirectional substring matching.
 - Evidence can come from explicit skills, experience `technologies`, experience descriptions, and (for required skills) project technologies.
 - A skill listed as "Working knowledge" still earns full required-skill points today. Depth is recorded but not scored.
-- Experience uses `totalExperienceYears` directly; it does **not** recalculate from employment dates.
-- Deterministic test anchor: the fixture in `lib/tests/engine.test.ts` must continue to score **76 / "Review"**.
+- Scoring uses `totalExperienceYears` directly; it does **not** recalculate from employment dates or read the clock. The offline extractor derives that value from an explicit statement or date ranges at extraction time (see `lib/ai/resume-heuristics.ts`), so re-extracting an open-ended role later can change the input.
+- The offline extractor never invents employers, degrees, or experience years. Missing evidence stays empty; every extracted skill cites a resume line.
+- Job extraction is line-scoped. In "FastAPI or Django", the later alternative is treated as preferred because the engine has no OR-group type yet. No fallback requirements are invented when nothing matches.
+- Screenings created from the bundled sample resumes carry `isSample: true` and are labelled in the UI.
+- Deterministic test anchor: the fixture in `lib/tests/engine.test.ts` must continue to score **76 / "Review"**. The suite currently has **45 assertions** and also covers candidate validation, resume heuristics, and an end-to-end sample run.
 
 ---
 
@@ -293,8 +311,9 @@ Needs Verification  : otherwise
 - **Next 16 dynamic route params are Promises.** Server components `await params`; client components use `React.use(params)`.
 - Prefer server components by default. Add `"use client"` only for interactivity, browser APIs, or the localStorage store.
 - Use `next/link` for navigation. Use `ButtonLink` rather than nesting a `<button>` inside a `<Link>`.
-- No API routes exist yet. If you add one, put it under `app/api/**/route.ts` and keep provider calls server-side.
-- Keep providers server-side when you wire real extraction. Running Ollama calls from the browser requires CORS (`OLLAMA_ORIGINS`) and leaks implementation detail.
+- The only API route today is `app/api/ingest/route.ts` for document text extraction. New routes belong under `app/api/**/route.ts`; keep provider calls and Node-only parsers server-side.
+- Candidate extraction currently runs in the browser through `screenCandidateText()` because the wizard is a client component. Running Ollama calls from the browser requires CORS (`OLLAMA_ORIGINS`) and leaks implementation detail; move extraction behind a server route before offering Ollama in the wizard.
+- The ingest route is deliberately stateless. Do not write uploads to disk or add persistence there without a storage/privacy design.
 
 ### Styling
 
@@ -311,6 +330,16 @@ Needs Verification  : otherwise
 - `any` is allowed only in the untrusted AI-output validation layer; prefer `unknown` + a validator elsewhere.
 - IDs: sample data uses readable IDs (`cand-01`, `req-1`); Prisma uses `cuid()`. Do not assume numeric IDs.
 - Dates in sample data are ISO strings. Store timestamps in Prisma as `DateTime`.
+
+### Ingestion
+
+- `app/api/ingest/route.ts` is the single document → text boundary. Keep PDF/DOCX parser calls there, not in client components.
+- Validate extension **and** magic bytes. Return per-file failures instead of failing the whole request when one file is corrupt.
+- Current limits: 20 files, 10 MB per file, 50 MB per request, 200k characters per document, 20 requests/minute per client (in-memory).
+- Do not persist uploaded files. If storage is added, define retention, access control, and organization scoping first.
+- No OCR. Scanned/image-only PDFs must fail with a readable error, not a blank candidate.
+- Sample mode must set `isSample: true` on the screening and keep the **Sample** label visible in the list, dashboard, and detail views.
+- Surface non-fatal ingestion problems through `processingNotes`; isolate per-candidate extraction failures so one bad resume does not abort the run.
 
 ### State
 
@@ -353,19 +382,22 @@ Needs Verification  : otherwise
 
 ## 11. Known pitfalls
 
-1. **Sample data is not production data.** `lib/data/sample-data.ts` is the single demo fixture. Do not add "live" claims around it.
-2. **Mock provider fabricates defaults.** It always returns a "Tech Systems" backend role and a "Tribhuvan University" degree when parsing resumes. Never present mock output as verified candidate history.
-3. **Mock extraction is catalog-limited.** It recognizes a fixed list of technologies; unknown skills are ignored or fall back to Python/FastAPI/PostgreSQL/Docker for job descriptions.
-4. **`matchSkills` uses substring matching in both directions.** "React" can match "React Native". Improve deliberately with tests if you need stricter semantics.
-5. **Preferred-vs-required detection in the mock is heuristic and case-sensitive** (`text.indexOf(item.name)`); it can miss lowercase mentions.
-6. **The wizard ignores uploaded file contents.** It scores `DEMO_RESUME_POOL`. Real ingestion is Phase 3.
-7. **`recomputeScoresWithWeights` reconstructs a pseudo-profile from stored matches.** It is a UI recomputation, not a re-extraction. Do not treat it as an audit-grade rescore.
-8. **No auth or tenant isolation.** The `Apex Engineering` workspace in the shell is cosmetic. Do not expose real candidate data.
-9. **Prisma is not wired into the app.** Importing `prisma/generated/client` into a client component will fail; use it only in server code.
-10. **`prisma generate` is required** after a clean clone before typecheck/seed because the generated client is git-ignored.
-11. **`npm audit` reports a dev-only `braces` advisory** through `eslint-config-next`. Do **not** run `npm audit fix --force`; it downgrades Next/ESLint. Re-check upstream.
-12. **TypeScript 7 is intentionally not adopted yet.** Next 16 / Prisma 7 are validated against TS 5.9. Revisit after upstream support.
-13. **Prisma 8 is a release candidate.** Stay on stable Prisma 7.10.x until 8 is GA.
+1. **Sample data is not production data.** `lib/data/sample-data.ts` and `lib/data/demo-resumes.ts` are fictional fixtures. New sample screenings must set `isSample: true`; keep the **Sample** label visible.
+2. **The offline extractor is honest but limited.** It recognizes a fixed skill catalog and simple resume sections/date formats. Unrecognized skills stay absent; it never falls back to a default employer, degree, or requirement set.
+3. **`matchSkills` uses substring matching in both directions.** "React" can match "React Native". Improve deliberately with tests if you need stricter semantics.
+4. **Preferred-vs-required detection in job extraction is heuristic.** It is now line-scoped and case-insensitive, but it can still misread complex phrasing. "X or Y" treats the later skill as preferred; the engine has no OR-group type.
+5. **Date-derived experience is evaluated at extraction time.** Explicit “N years” wins; otherwise closed ranges and `Present` roles are merged. Scoring itself never reads dates or the clock, but re-extracting later can change the input. Store the extraction history before claiming audit-grade reproducibility.
+6. **The wizard screens uploads through `/api/ingest`; sample mode is the only path that uses `DEMO_RESUME_POOL`.** Do not reintroduce a hidden demo fallback.
+7. **Scanned/image-only PDFs are not supported.** `unpdf` returns no text, and the route reports a per-file error. Do not score a blank document as a candidate.
+8. **Ingestion limits are real.** 20 files, 10 MB per file, 50 MB per request, 200k characters per document. Oversized text is truncated and recorded in `processingNotes`.
+9. **Candidate extraction still runs in the browser.** `screenCandidateText()` calls `getAIProvider()` client-side; `AI_PROVIDER` is server-only, so the wizard currently uses the mock provider. Ollama needs a server route (and CORS if kept client-side).
+10. **`recomputeScoresWithWeights` reconstructs a pseudo-profile from stored matches.** It is a UI recomputation, not a re-extraction. Do not treat it as an audit-grade rescore.
+11. **No auth or tenant isolation.** The `Apex Engineering` workspace in the shell is cosmetic. Do not expose real candidate data.
+12. **Prisma is not wired into the app.** Importing `prisma/generated/client` into a client component will fail; use it only in server code.
+13. **`prisma generate` is required** after a clean clone before typecheck/seed because the generated client is git-ignored.
+14. **`npm audit` reports a dev-only `braces` advisory** through `eslint-config-next`. Do **not** run `npm audit fix --force`; it downgrades Next/ESLint. Re-check upstream.
+15. **TypeScript 7 is intentionally not adopted yet.** Next 16 / Prisma 7 are validated against TS 5.9. Revisit after upstream support.
+16. **Prisma 8 is a release candidate.** Stay on stable Prisma 7.10.x until 8 is GA.
 
 ---
 
@@ -376,9 +408,9 @@ Full detail, acceptance criteria, and sequencing: [`docs/ROADMAP.md`](./docs/ROA
 | Phase | Theme | Highest-value outcome |
 | --- | --- | --- |
 | 0 ✅ | Platform upgrade + agent docs | Next 16 / React 19 / Tailwind 4 / Prisma 7 on stable, verified tooling |
-| 1 | Correctness & consolidation | One type system, server-side extraction, settings persistence, solid tests |
+| 1 🟡 | Correctness & consolidation | Candidate validation + honest heuristics shipped; type unification, server-side provider extraction, and settings persistence remain |
 | 2 | Persistence | Prisma repositories + server actions; screenings/decisions/audit survive reloads |
-| 3 | Real ingestion | PDF/DOCX text extraction, real uploads, batch pipeline wired end to end |
+| 3 🟡 | Real ingestion | PDF/DOCX/TXT/MD extraction and upload screening shipped; persistence, OCR, dedupe, and the batch pipeline remain |
 | 4 | Market intelligence | Ingested postings + evidence sources replace static market samples |
 | 5 | Production readiness | Auth, organization scoping, RBAC, privacy, observability, e2e tests |
 
@@ -403,9 +435,19 @@ A change is complete only when:
 
 | If you changed… | Update… |
 | --- | --- |
-| Layer boundaries, runtime topology, provider model | `docs/ARCHITECTURE.md` |
+| Layer boundaries, runtime topology, provider model, ingestion flow | `docs/ARCHITECTURE.md` |
 | Weights, thresholds, matching semantics, test anchors | `docs/ENGINE.md` |
 | Types, Prisma models, persistence mapping | `docs/DATA-MODEL.md` |
 | Priorities, scope, acceptance criteria | `docs/ROADMAP.md` |
 | Capability status, commands, conventions, pitfalls | this file (`AGENTS.md`) |
 | User-facing setup / feature overview | `README.md` |
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+## This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

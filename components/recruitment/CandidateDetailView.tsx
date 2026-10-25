@@ -146,6 +146,23 @@ export function CandidateDetailView({
         </Callout>
       )}
 
+      {candidate.extractionConfidence !== undefined &&
+        candidate.extractionConfidence < 0.6 && (
+          <Callout tone="warning" title="Low-confidence extraction">
+            This profile was extracted with{" "}
+            {Math.round(candidate.extractionConfidence * 100)}% confidence. Some
+            evidence may be missing. Verify the source document before deciding.
+            {candidate.extractionWarnings &&
+              candidate.extractionWarnings.length > 0 && (
+                <ul className="mt-2 list-disc space-y-0.5 pl-4 text-xs">
+                  {candidate.extractionWarnings.slice(0, 3).map((warning, index) => (
+                    <li key={index}>{warning}</li>
+                  ))}
+                </ul>
+              )}
+          </Callout>
+        )}
+
       {/* Score overview */}
       <Card>
         <div className="grid grid-cols-1 gap-6 p-5 sm:grid-cols-[minmax(0,180px)_1fr] sm:gap-8">

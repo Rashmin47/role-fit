@@ -119,6 +119,10 @@ export interface CandidateScoreResult {
   requiredExperienceYears: number;
   status: MatchStatus;
   decision: DecisionStatus;
+  /** Confidence of the underlying candidate extraction (0–1). */
+  extractionConfidence?: number;
+  /** Non-fatal extraction warnings, e.g. no work history found. */
+  extractionWarnings?: string[];
   /** Recruiter notes captured in the detail view. */
   reviewNotes?: string;
   /** ISO timestamp of the last human decision. */
@@ -141,6 +145,10 @@ export interface JobScreening {
   shortlistedCount: number;
   requirements: JobRequirements;
   candidates: CandidateScoreResult[];
+  /** True when candidates come from the bundled fictional demo set. */
+  isSample?: boolean;
+  /** Non-fatal ingestion notes: unreadable files or failed candidates. */
+  processingNotes?: string[];
 }
 
 export interface MarketRequirementStat {

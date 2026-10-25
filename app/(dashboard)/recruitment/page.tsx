@@ -95,8 +95,13 @@ export default function RecruitmentWorkspacePage() {
                           href={`/recruitment/${screening.id}`}
                           className="block min-w-0"
                         >
-                          <span className="block truncate font-medium text-nirman-dark">
-                            {screening.title}
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className="truncate font-medium text-nirman-dark">
+                              {screening.title}
+                            </span>
+                            {screening.isSample && (
+                              <Badge variant="neutral">Sample</Badge>
+                            )}
                           </span>
                           <span className="mt-0.5 block truncate text-xs text-nirman-text-muted">
                             {screening.department} · {screening.location}

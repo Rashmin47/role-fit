@@ -131,6 +131,14 @@ export default function JobScreeningDetailPage({
         }
       />
 
+      {screening.isSample && (
+        <Callout tone="neutral" title="Sample screening">
+          These candidates are fictional records from the bundled demo set. They
+          are not live applicants, and the scores are only an illustration of the
+          deterministic pipeline.
+        </Callout>
+      )}
+
       <div className="grid grid-cols-2 divide-y divide-nirman-border overflow-hidden rounded-lg border border-nirman-border bg-white sm:grid-cols-4 sm:divide-y-0 sm:divide-x">
         <Metric
           label="Candidates"
@@ -153,6 +161,16 @@ export default function JobScreeningDetailPage({
           hint="Marked by a reviewer"
         />
       </div>
+
+      {screening.processingNotes && screening.processingNotes.length > 0 && (
+        <Callout tone="warning" title="Some documents were skipped">
+          <ul className="space-y-1">
+            {screening.processingNotes.map((note, index) => (
+              <li key={index}>{note}</li>
+            ))}
+          </ul>
+        </Callout>
+      )}
 
       {showWeightsConfig && (
         <Card className="animate-slide-up">

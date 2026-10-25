@@ -574,6 +574,7 @@ export const SAMPLE_SCREENINGS: JobScreening[] = [
     ).length,
     requirements: SAMPLE_JOB_REQUIREMENTS,
     candidates: SAMPLE_CANDIDATES,
+    isSample: true,
   },
   {
     id: "job-screening-fe-02",
@@ -602,6 +603,7 @@ export const SAMPLE_SCREENINGS: JobScreening[] = [
       responsibilities: ["Develop responsive UI components", "Maintain design system tokens"],
     },
     candidates: [],
+    isSample: true,
   },
 ];
 
