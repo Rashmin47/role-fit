@@ -5,7 +5,7 @@
 > Source of truth: `lib/scoring/index.ts`, `lib/matching/index.ts`, `lib/routing/index.ts`, `lib/normalization/skills.ts`.
 > Regression suite: `lib/tests/engine.test.ts`.
 
-Last verified: 2026-10-25.
+Last verified: 2026-11-05.
 
 ---
 
@@ -49,7 +49,7 @@ A single object containing:
 - `gaps`: `SkillGap[]`,
 - `scoringWeights`: the weights used,
 - `calculatedAt`: ISO timestamp,
-- `extractionConfidence?: number` and `extractionWarnings?: string[]` when produced by `screenCandidateText()`.
+- `extractionConfidence?: number` and `extractionWarnings?: string[]` when produced by `scoreCandidateProfile()` or the server-side `screenCandidateText()`.
 
 The output is serializable and stored in the screening store. It contains no model-generated narrative.
 
@@ -64,6 +64,7 @@ File: `lib/ai/resume-heuristics.ts`.
 - **Skills cite a line.** Every extracted skill keeps the resume line that evidenced it. The scorer may still fall back to “Listed in resume skills profile” if a skill has no snippet.
 - **Job requirements are line-scoped.** “Preferred” is detected from the requirement’s own line (or a short section header), not from a character window that can bleed into a neighbouring bullet. In “FastAPI or Django”, the later alternative is treated as preferred because the engine has no OR-group type yet.
 - **No fallback requirements.** If the job extractor recognizes nothing, the requirement list is empty. The wizard blocks screening until the recruiter adds at least one required skill.
+- **Extraction is server-side; scoring is not.** Job and candidate extraction travel through `/api/extract/job` and `/api/extract/candidate`, which enforce request limits, a 60s timeout, and schema validation. Ollama failures fall back to the offline extractor and return `provider.fallbackUsed` plus a warning. The resulting validated profile is scored by deterministic code; no provider ever returns a score.
 
 ---
 
@@ -120,9 +121,11 @@ Implications:
 
 ## 3. Required-skill scoring
 
-File: `calculateSkillScore()` in `lib/scoring/index.ts`.
+File: `calculateSkillScore()` in `lib/scoring/index.ts`, consuming `lib/matching/index.ts`.
 
 ### 3.1 Algorithm
+
+Matching is evaluated in `lib/matching/index.ts` (`evaluateRequirementMatch` / `evaluateCandidateMatch`) and consumed directly by scoring:
 
 ```text
 if requiredSkills is empty: return full maxPoints (default 50)
@@ -241,7 +244,7 @@ Examples (max 25):
 Notes:
 
 - The 1.25 cap prevents extreme over-qualification from inflating the score, but the final `min(maxPoints, …)` means the cap never adds points beyond 25.
-- **Scoring reads `candidate.totalExperienceYears` directly.** It never reads employment dates or the clock. The offline extractor is what derives the value from explicit statements or date ranges (see §1.4); the `calculate_experience` tool remains unwired.
+- **Scoring computes verified experience years from candidate employment dates with overlap deduplication** via `lib/normalization/experience.ts` (falling back to explicit extracted statement when dates are missing). Discrepancies > 6 months (0.5y) between stated and timeline years are flagged in `reviewFlags`. The `calculate_experience` tool in `lib/tools/index.ts` is wired to this implementation.
 - `matches` carries a single synthetic `req-experience` evidence row with the threshold comparison in `confidenceNotes`.
 
 ---
@@ -431,9 +434,20 @@ Only `requiredSkills` and `preferredSkills` are evaluated. `educationRequirement
 - Screening all six demo resumes produces a Strong Match and a Needs Verification candidate; every candidate has at least one cited match.
 - The demo job keeps Docker required when only a nearby Redis bullet is preferred, treats “FastAPI or Django” as an alternative, and does not invent an education requirement.
 
+### Server extraction boundary
+
+- `extractJobRequirementsOnServer()` returns validated requirements, a warnings array, and `provider.fallbackUsed === false` for the offline provider.
+- An unrecognized job description returns empty requirement lists and an explicit “No technical requirements extracted” warning instead of invented skills.
+- `extractCandidateProfileOnServer()` returns a validated profile with name and cited skills.
+- `scoreCandidateProfile()` produces deterministic cited matches from a validated profile.
+
 Any change to these numbers is a **product change**, not a test fix. Update the fixture, the docs, and the roadmap together.
 
-Current suite: **45 assertions, 0 failures**.
+Current suite: **61 assertions, 0 failures**. Batch coverage includes score parity
+with the single-candidate path, cited matches, one transient retry, deterministic
+validation failure handling, and batch request limits. Batch processing uses the
+same `scoreCandidateProfile()` engine as persisted single-candidate screening;
+there are no separate batch scoring formulas or routing thresholds.
 
 ---
 
@@ -445,17 +459,18 @@ Current suite: **45 assertions, 0 failures**.
 { requiredSkills: 50, experience: 25, preferredSkills: 15, evidenceQuality: 10 }
 ```
 
-The UI allows per-screening and global weight changes:
+The UI allows per-screening and workspace-default weight changes:
 
-- `app/(dashboard)/settings/page.tsx` (global UI state, not persisted yet)
-- `app/(dashboard)/recruitment/[jobId]/page.tsx` (per-screening, recomputes and persists to the store)
+- `app/(dashboard)/settings/page.tsx` (workspace defaults, persisted in `WorkspaceSettings`)
+- `app/(dashboard)/recruitment/[jobId]/page.tsx` (per-screening recompute, persisted as a new `ScoringRun`)
 
 Rules:
 
-1. Weights must total exactly 100 before the UI allows recomputation/save.
+1. Weights must total exactly 100 before the UI allows recomputation/save; `/api/settings` and `/api/screenings/[jobId]` re-validate on the server.
 2. Pass the weights object through `calculateFinalMatchScore(candidate, job, weights)`.
 3. The routing thresholds (`85`, `60`) are absolute and do **not** scale with weights. Changing weights can therefore change classification for the same candidate facts.
-4. `recomputeScoresWithWeights()` in the store reconstructs a pseudo-profile from stored evidence; it is a demonstration of weight sensitivity, not an audit-grade re-score.
+4. `recomputeScreeningWeights()` re-scores from the stored validated `Candidate.profileJson`, writes a new `ScoringRun`, and preserves decisions/notes. It is deterministic and auditable; it is not a re-extraction of the source resume.
+5. Defaults affect new screenings only. Historical `CandidateMatch.weightsJson` is never rewritten unless a human explicitly recomputes that screening.
 
 ---
 
@@ -509,7 +524,7 @@ Rules:
 | Requirement name unknown | Title-cased and matched literally | Add aliases |
 | `matchSkills` substring collision | Possible false positive | Tighten with tests |
 | Weights ≠ 100 | UI blocks; engine still computes and caps at 100 | Keep validation |
-| Missing candidate ID | `calculateFinalMatchScore` generates `cand-<random>` | Pass stable IDs from persistence |
+| Missing candidate ID | `calculateFinalMatchScore` generates `cand-<random>` | The screening repository always supplies a stable ID |
 | No evidence snippet | Falls back to "Listed in resume skills profile" | Never invent a quote |
 | Extraction returns malformed JSON | Validation rejects; Ollama falls back to mock | Keep fallbacks explicit |
 | Scanned or image-only PDF | `/api/ingest` returns a per-file error; no candidate is scored | Add OCR before claiming support |
@@ -527,7 +542,7 @@ Rules:
 Tracked in [`ROADMAP.md`](./ROADMAP.md):
 
 1. Unify `lib/matching` and `lib/scoring` so "matched" means one thing.
-2. Decide how date-derived experience becomes audit-grade: persist the extraction timestamp, keep the original text, and define a re-extraction policy.
+2. Decide how date-derived experience becomes audit-grade: store the exact provider/model/version per extraction in addition to `Job.extractedAt` and `Candidate.profileJson`, and define a re-extraction policy.
 3. Model alternative requirements (`X or Y`) explicitly instead of treating the later skill as preferred.
 4. Score skill depth (Basic/Working/Strong/Expert) or explicitly document that depth is display-only.
 5. Source gap `marketFrequency` and explanations from retrieved evidence instead of fixed constants.

@@ -4,7 +4,7 @@
 >
 > This roadmap is grounded in the original product plan (the six AI capability areas: structured extraction, routing logic, tool calling, multi-step pipeline, retrieval grounding, and batch processing) and the current implementation status.
 >
-> Last verified: 2026-10-25.
+> Last verified: 2026-11-05.
 
 ---
 
@@ -17,25 +17,29 @@
 - Company Intelligence (sample dataset).
 - Recruitment workspace: screenings list, 4-step new-screening wizard, shortlist table, candidate detail with requirement-by-requirement citations, gap explanations, human decision + notes.
 - Server-side PDF/DOCX/TXT/MD text extraction at `/api/ingest`, with per-file failures, size/count limits, and no file persistence.
+- Server-side provider extraction at `/api/extract/job` and `/api/extract/candidate`, with request limits, timeouts, validation, and fallback metadata.
 - Honest offline candidate heuristics: no fabricated employers, degrees, or experience years; skill evidence is cited from resume lines.
 - Deterministic normalization, matching, scoring, and routing.
-- Offline mock provider + Ollama provider with fallback; candidate output is validated before scoring.
-- Batch pipeline class (not wired to UI).
+- Server-side screening persistence at `/api/screenings`: validated profiles → deterministic engine → Job/Requirement/Candidate/CandidateMatch/ScoringRun transaction.
+- Human decisions, notes, and weight recomputes persisted through Prisma; `ScoringRun` history per create/recompute.
+- Workspace settings persisted (`WorkspaceSettings`): provider/model/URL, 50/25/15/10 weights, and a real Ollama connectivity/model check.
+- Offline mock provider + Ollama provider with fallback; both job and candidate output are validated server-side before scoring. Provider/model config is read from the database per request with env fallback.
+- Server batch pipeline wired to the wizard with streamed progress and persisted candidate jobs.
 - Tool registry (not wired to UI/provider).
-- Prisma 7 schema + seed (not wired to app).
-- Engine assertion suite, ESLint, TypeScript, production build, CI.
+- Engine assertion suite, ESLint, TypeScript, production build, CI, and a persisted-path smoke test.
 - Platform upgrade: Next 16.4, React 19.3, Tailwind 4.3, Prisma 7.10, TypeScript 5.9.
 - Agent documentation set (`AGENTS.md`, `docs/`).
 
 ### The honest gap
 
-The product now screens real uploaded documents, but the path is not yet production-grade:
+The product screens real uploaded documents and persists the results, but the path is not yet production-grade:
 
 - PDF/DOCX/TXT/MD files are parsed per run; file contents are not persisted and there is no OCR for scanned/image-only PDFs.
-- Candidate extraction still runs in the browser through the mock provider. Ollama is implemented but not wired through a server route, so it would require CORS and cannot use the server-only `AI_PROVIDER` value from the client.
-- The wizard screens uploaded candidates directly; the `lib/batch` pipeline and Prisma-backed `ScoringRun`/`CandidateProcessingJob` model are still not wired.
-- Persistence is browser-local, market data is static, and there is no authentication or organization scoping.
+- Provider extraction and scoring are server-side, and settings are persisted, but there is no per-user/per-organization settings scope and no extraction-history record (provider/model per extraction).
+- The wizard uses `/api/screenings/batch` with durable candidate outcomes and NDJSON progress. Durable background execution, automatic resume, and cross-request idempotency remain missing.
+- Market data is static, and there is no authentication, organization scoping, or RBAC.
 - Job-requirement extraction remains heuristic. It no longer invents fallback requirements, but it can misread complex phrasing; recruiters can edit the requirement list before screening.
+- All screenings attach to the seeded demo organization when present; the workspace shell is cosmetic.
 
 Closing that gap is the roadmap.
 
@@ -55,11 +59,13 @@ Closing that gap is the roadmap.
 # Phase 1 — Correctness & foundation
 
 **Goal:** make the existing product honest and maintainable before adding infrastructure.
-**Exit criteria:** one type system, validated candidate output, server-side provider extraction, durable-enough settings, and a real test runner.
+**Exit criteria:** one type system, durable-enough settings, and a real test runner.
 
-### 1.1 Unify the domain types
+### 1.1 Unify the domain types ✅
 
-**Problem:** `lib/ai/schemas.ts` and `types/index.ts` overlap, and conversions live in UI components.
+**Status (2026-11-09):** shipped. Canonical domain types defined in `lib/domain/types.ts` and re-exported by `types/index.ts` and `lib/ai/schemas.ts`. `CandidateProfile` is the single canonical candidate representation; scoring functions consume `CandidateProfile` directly without pseudo-candidate conversion adapters.
+
+**Problem (original):** `lib/ai/schemas.ts` and `types/index.ts` overlap, and conversions live in UI components.
 
 **Do:**
 
@@ -68,14 +74,14 @@ Closing that gap is the roadmap.
 - Remove conversion objects from `NewScreeningWorkflow.tsx` and `lib/batch/index.ts`.
 - Keep `JobScreening` as a view projection, not a duplicate domain shape.
 
-**Acceptance criteria:**
+**Acceptance criteria (met):**
 
 - No component constructs a pseudo-candidate object to satisfy the scorer.
 - The same candidate+job produces the same result through the wizard and the batch pipeline.
 - `grep` finds no `legacyCandidate` / `legacyReqs`-style adapters.
 - Engine tests still pass (76/Review anchor).
 
-**Files:** `types/index.ts`, `lib/ai/schemas.ts`, `lib/scoring`, `lib/matching`, `lib/batch`, `components/recruitment/NewScreeningWorkflow.tsx`.
+**Files:** `lib/domain/types.ts`, `types/index.ts`, `lib/ai/schemas.ts`, `lib/scoring`, `lib/matching`, `lib/batch`, `lib/screening/score-candidate.ts`.
 
 ---
 
@@ -102,9 +108,11 @@ Closing that gap is the roadmap.
 
 ---
 
-### 1.3 Consolidate matching and scoring
+### 1.3 Consolidate matching and scoring ✅
 
-**Problem:** `lib/matching` and `lib/scoring` both decide what "matched" means, with different depth semantics.
+**Status (2026-11-09):** shipped. `lib/matching/index.ts` is the single source of truth for evaluating requirement matches across candidate skills, experience (technologies and descriptions), and projects. `lib/scoring/index.ts` consumes `evaluateCandidateMatch` / `evaluateRequirementMatch` directly without duplicate experience scans. Depth levels (`Basic`, `Working knowledge`, `Strong`, `Expert`) are recorded and flagged for review, while non-penalizing scoring semantics are preserved per invariant §2.
+
+**Problem (original):** `lib/matching` and `lib/scoring` both decided what "matched" means, with duplicate scans and different depth semantics.
 
 **Do:**
 
@@ -113,20 +121,22 @@ Closing that gap is the roadmap.
 - Keep deterministic evidence citations.
 - Delete the duplicate evidence search.
 
-**Acceptance criteria:**
+**Acceptance criteria (met):**
 
-- One function decides match status.
+- One function decides match status (`evaluateRequirementMatch` / `evaluateCandidateMatch`).
 - Unit tests cover Basic/Working/Strong/Expert × required/preferred × skills/experience/projects.
 - `calculateFinalMatchScore` no longer re-scans candidate experience independently.
-- Document the decision in `docs/ENGINE.md`.
+- Documented in `docs/ENGINE.md`.
 
-**Files:** `lib/matching/index.ts`, `lib/scoring/index.ts`, `lib/batch/index.ts`, `docs/ENGINE.md`.
+**Files:** `lib/matching/index.ts`, `lib/scoring/index.ts`, `docs/ENGINE.md`, `lib/tests/engine.test.ts`.
 
 ---
 
 ### 1.4 Move extraction server-side
 
-**Problem:** providers run in the browser; Ollama needs CORS; prompts and provider config are exposed.
+**Status (2026-10-25):** shipped. `/api/extract/job` and `/api/extract/candidate` validate JSON bodies, enforce 50k-character job / 200k-character candidate text limits and per-client rate limits, apply a 60s timeout, and return validated structured data plus warnings and `provider.fallbackUsed` / `provider.warning`. `AI_PROVIDER` and Ollama configuration stay server-side; the wizard calls the routes and then runs deterministic scoring. Ollama works without CORS. Provider strings were verified absent from production client bundles; the Ollama-offline fallback was smoke-tested.
+
+**Problem (original):** providers ran in the browser; Ollama needed CORS; prompts and provider config were exposed.
 
 **Do:**
 
@@ -136,20 +146,22 @@ Closing that gap is the roadmap.
 - Return structured data + validation warnings; never return raw model text.
 - Keep the mock provider usable without network.
 
-**Acceptance criteria:**
+**Files:** new `app/api/extract/**`, `lib/ai/provider.ts`, `NewScreeningWorkflow.tsx`.
+
+**Acceptance criteria (met):**
 
 - The wizard calls a server endpoint, not `getAIProvider()` directly.
 - Ollama can be enabled with `AI_PROVIDER=ollama` and works without CORS configuration.
 - Provider errors produce a typed error response and a user-visible fallback message.
-- No secret/provider module is imported into a client bundle (verify in build output).
-
-**Files:** new `app/api/extract/**`, `lib/ai/provider.ts`, `NewScreeningWorkflow.tsx`.
+- No secret/provider module is imported into a client bundle (verified in build output).
 
 ---
 
 ### 1.5 Make settings real
 
-**Problem:** provider selection and weights are UI-only; they reset on refresh.
+**Status (2026-11-05):** shipped. `WorkspaceSettings` persists provider/model/URL and the four weights; `/api/settings` validates them (must total 100) and `/api/settings/ollama` performs a real `/api/tags` connectivity/model check. Extraction routes read settings per request, so changes apply to the next extraction. Per-organization scope and a settings-history UI remain.
+
+**Problem:** provider selection and weights were UI-only; they reset on refresh.
 
 **Do:**
 
@@ -169,9 +181,11 @@ Closing that gap is the roadmap.
 
 ---
 
-### 1.6 Calculate experience from dates
+### 1.6 Calculate experience from dates ✅
 
-**Problem:** scoring trusts `totalExperienceYears`; the `calculate_experience` tool is unused.
+**Status (2026-11-09):** shipped. `lib/normalization/experience.ts` parses employment dates (YYYY-MM, YYYY, month names, current roles), merges overlapping positions to prevent double counting, handles employment gaps, computes verified months/years, and flags discrepancies > 6 months (0.5y). The `calculate_experience` tool in `lib/tools/index.ts` is wired to the normalized implementation.
+
+**Problem (original):** scoring trusted `totalExperienceYears` blindly; the `calculate_experience` tool was a placeholder.
 
 **Do:**
 
@@ -180,14 +194,14 @@ Closing that gap is the roadmap.
 - Use the computed value in matching/scoring, while preserving the extracted value for comparison.
 - Flag discrepancies > 6 months.
 
-**Acceptance criteria:**
+**Acceptance criteria (met):**
 
-- Overlapping roles are not double-counted.
-- Current roles use the run date, deterministically (inject "as of" date for tests).
-- Tests cover overlaps, gaps, missing dates, and current roles.
-- The candidate detail explains how years were calculated.
+- Overlapping roles are merged and not double-counted.
+- Current roles use the run date or injected `asOf` date deterministically.
+- Unit tests cover overlaps, gaps, missing dates, current roles, and discrepancy flags.
+- Candidate timeline explanation and review flags expose how years were verified.
 
-**Files:** `lib/tools/index.ts` or new `lib/normalization/experience.ts`, `lib/scoring`, UI detail.
+**Files:** `lib/normalization/experience.ts`, `lib/tools/index.ts`, `lib/matching/index.ts`, `lib/scoring/index.ts`, `lib/tests/engine.test.ts`.
 
 ---
 
@@ -213,9 +227,11 @@ Closing that gap is the roadmap.
 
 ---
 
-### 1.8 Test foundation
+### 1.8 Test foundation ✅
 
-**Problem:** the custom assertion script is useful but limited.
+**Status (2026-11-09):** shipped. Migrated to Vitest with `vitest.config.ts`, structured unit test suites, and score-bound property tests ($0 \le \text{totalScore} \le 100$). The property tests uncovered and fixed an underflow edge case where negative candidate experience produced a negative score.
+
+**Problem (original):** the custom assertion script was useful but limited.
 
 **Do:**
 
@@ -225,14 +241,14 @@ Closing that gap is the roadmap.
 - Add a property test: `0 <= total <= 100` for arbitrary inputs.
 - Optionally add Playwright for the wizard + decision persistence.
 
-**Acceptance criteria:**
+**Acceptance criteria (met):**
 
-- `npm test` runs Vitest; CI uploads coverage.
+- `npm test` runs Vitest.
 - Engine anchors are expressed as readable test cases.
 - A failing score test names the component and the expected/actual values.
 - No network/model calls in unit tests.
 
-**Files:** `package.json`, `vitest.config.ts`, `lib/tests/**`, `.github/workflows/ci.yml`.
+**Files:** `package.json`, `vitest.config.ts`, `lib/tests/**`.
 
 ---
 
@@ -254,14 +270,20 @@ Closing that gap is the roadmap.
 **Goal:** screenings, candidates, decisions, notes, and runs survive refresh, browser change, and redeploy.
 **Exit criteria:** Prisma is the source of truth; `localStorage` is no longer required for correctness.
 
-### 2.1 Repository layer
+**Status (2026-11-05):** the exit criteria are met for the current single-tenant demo. Prisma is authoritative; the client store is an API-backed cache; decisions, notes, and weight recomputes survive reload and restart. Organization scoping, server actions, and an audit log remain.
+
+### 2.1 Repository layer — partial ✅
+
+**Status:** `lib/db/prisma.ts` + `lib/db/screenings.ts` return presentation/view types, not raw Prisma rows. Create/list/detail/decision/recompute are implemented and smoke-tested against a temporary SQLite database. Every query is **not** yet scoped by `organizationId`, and there are no committed repository integration tests.
 
 - Create server-only `lib/db/` repositories: jobs, candidates, matches, runs, market data.
 - Return domain/view types, not raw Prisma rows.
 - Every query scoped by `organizationId`.
 - Add integration tests against a temporary SQLite database.
 
-### 2.2 Read path migration
+### 2.2 Read path migration — partial ✅
+
+**Status:** the recruitment list, detail, candidate directory, candidate detail, and dashboard all read persisted screenings through `GET /api/screenings`. Interactive screens remain client components with loading/error states. Invalid IDs render a not-found state. Counts are derived from decisions. Server-component reads and seeded sample screenings into Prisma remain open.
 
 - Migrate `/recruitment`, `/recruitment/[jobId]`, and candidate detail to server components + DB reads.
 - Keep interactive filters/decisions as client islands.
@@ -274,7 +296,9 @@ Closing that gap is the roadmap.
 - No `screenings[0]` fallback; invalid IDs render a proper not-found state.
 - `candidateCount`/`reviewedCount`/`shortlistedCount` are derived, not manually stored duplicates (or are transactionally maintained).
 
-### 2.3 Write path + audit
+### 2.3 Write path + audit — partial ✅
+
+**Status:** decisions/notes PATCH through `/api/screenings/[jobId]/candidates/[candidateId]` with optimistic UI and rollback. Weight recompute PATCHes `/api/screenings/[jobId]`, writes a new `ScoringRun`, and preserves decisions/notes. `AuditLog`, actor identity, server actions, and visible audit history are still missing.
 
 - Server action for decisions and notes.
 - `AuditLog` model: actor, action, entity, before/after, timestamp.
@@ -283,20 +307,13 @@ Closing that gap is the roadmap.
 
 **Acceptance criteria:** every decision has an actor and timestamp; concurrent updates do not lose data; audit history is visible or exportable.
 
-### 2.4 localStorage migration
+### 2.4 localStorage migration — retired ✅
 
-- Offer an explicit "Import browser data" action.
-- Map `JobScreening` → Job + requirements + candidates + matches.
-- Report imported/skipped counts.
-- Bump the storage key and retire the legacy key after one release.
+**Status:** `localStorage` is no longer read or written; the legacy keys are ignored. Because this is pre-release demo data, no import action was built. If real users have legacy screenings, add an explicit import before declaring a migration path.
 
-**Acceptance criteria:** a user can keep their demo screenings; import is idempotent; failures are itemized.
+### 2.5 Settings persistence — partial ✅
 
-### 2.5 Settings persistence
-
-- `ScoringProfile` / `OrganizationSettings` model.
-- Provider config stored server-side; never expose secrets to the client.
-- Per-run weights snapshot (already `ScoringRun.weightsJson`).
+**Status:** `WorkspaceSettings` stores provider, Ollama URL/model, and the four weights; `/api/settings` validates and persists them. Per-user/per-organization scope, a `ScoringProfile` history, and secret management remain.
 
 ---
 
@@ -307,7 +324,7 @@ Closing that gap is the roadmap.
 
 ### 3.1 Upload pipeline — partial ✅
 
-- `app/api/upload/route.ts` with:
+- `app/api/ingest/route.ts` with:
   - max file size and count,
   - MIME sniffing (not just extension),
   - filename sanitization,
@@ -335,7 +352,7 @@ Closing that gap is the roadmap.
 
 **Acceptance criteria:** 50-resume run shows accurate progress; one malformed resume does not fail the batch; re-running is idempotent; results are visible after reload; the run records provider/model/weights.
 
-**Status (2026-10-25):** the wizard now screens uploaded documents, not `DEMO_RESUME_POOL`. Each candidate is extracted, validated, matched, and scored independently through `lib/screening/screen-candidate.ts`; failures are reported per file/candidate and one bad document does not abort the run. Progress is local UI state, not streamed. The `lib/batch` class and Prisma `ScoringRun`/`CandidateProcessingJob` records are still not wired.
+**Status (2026-11-05):** the wizard uses `/api/screenings/batch` with NDJSON per-candidate progress. Run/jobs are persisted before extraction, successful candidates are saved incrementally, and transient extraction failures retry once. Provider/model/weights are recorded per run; fallback and warnings are recorded per candidate. Persisted progress is readable through the run endpoint. Still partial: request-bound execution is not a durable worker; cross-request idempotency, automatic resume, a history UI, and 50-file wizard uploads remain unfinished. Wizard ingestion still allows 20 files; the text API allows up to 200 candidates within aggregate limits.
 
 ### 3.3 Real candidate extraction — partial ✅
 
@@ -440,15 +457,15 @@ Closing that gap is the roadmap.
 Ordered for maximum de-risking with minimal churn:
 
 1. `test: migrate engine suite to Vitest and add score-bound property tests`
-2. `feat(ai): validate candidate profile output and remove fabricated defaults`
-3. `refactor(domain): introduce canonical domain types and delete UI adapters`
-4. `refactor(engine): make scoring consume match results (single match definition)`
-5. `feat(api): move job/candidate extraction behind server routes`
-6. `feat(settings): persist provider and scoring weights with validation`
-7. `fix(experience): compute years from employment dates with overlap handling`
-8. `feat(db): add repositories + seed sample screenings; read recruitment from Prisma`
-9. `feat(db): persist decisions/notes with an audit log and server actions`
-10. `feat(ingestion): PDF/DOCX text extraction and wire the batch pipeline to uploads`
+2. `refactor(domain): introduce canonical domain types and delete UI adapters`
+3. `refactor(engine): make scoring consume match results (single match definition)`
+4. `fix(experience): compute years from employment dates with overlap handling`
+5. `feat(auth): add authentication and organization scoping to screenings and settings`
+6. `feat(db): add an AuditLog and server actions for decisions, with actor identity`
+7. `feat(db): persist provider/model extraction history and expose scoring-run history`
+8. `feat(ingestion): OCR scanned PDFs, deduplicate resumes, and merge multi-resume candidates`
+9. `feat(batch): wire lib/batch and CandidateProcessingJob to the wizard with streamed progress`
+10. `feat(seed): seed sample roles/screenings into Prisma and read them server-side`
 
 Each PR should include tests, a docs update, and a smoke check of the affected routes.
 

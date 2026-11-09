@@ -24,8 +24,8 @@ Job description / PDF · DOCX · TXT · MD
 Server text extraction                 /api/ingest · unpdf · mammoth
         │  per-file failures and limits
         ▼
-AI extraction (mock | ollama)          unstructured → typed JSON
-        │  validated at the boundary (lib/ai/schemas.ts)
+Server provider extraction             /api/extract/job · /api/extract/candidate
+        │  mock | ollama; validated at the boundary (lib/ai/schemas.ts)
         ▼
 Skill normalization                    aliases → canonical skills
         │
@@ -40,6 +40,9 @@ Deterministic scoring                  50 / 25 / 15 / 10 weights
 Deterministic routing                  Strong Match · Review · Needs Verification
         │
         ▼
+Persistence (server)                   Prisma · Job · Requirement · Candidate
+        │                              CandidateMatch · ScoringRun
+        ▼
 Human review                          decision + notes persisted
 ```
 
@@ -47,25 +50,26 @@ Every matched requirement carries evidence. No candidate is ever automatically r
 
 ---
 
-## Status: working demo, not a production pipeline
+## Status: working end to end, not production-grade
 
-The product thesis is fully implemented end to end, but the screening path still uses demo data. Be precise about what works today:
+The product thesis is implemented end to end: documents are parsed, providers extract validated facts, the deterministic engine scores them, and screenings, decisions, notes, and settings persist in Prisma. Be precise about what is still demo or missing:
 
 | Area | State |
 | --- | --- |
 | Landing page, dashboard shell, UI system | ✅ Implemented |
 | Career Intelligence, Company Intelligence | ✅ Implemented with **sample market data** |
 | 4-step new-screening wizard | ✅ UI complete; screens uploaded documents or the labelled sample set |
-| Candidate table, detail, evidence citations | ✅ Implemented |
+| Candidate table, detail, evidence citations | ✅ Implemented and database-backed |
 | Deterministic matching, scoring, routing | ✅ Implemented and tested |
-| Mock + Ollama providers | ✅ Implemented; both candidate and job output are validated |
+| Mock + Ollama providers | ✅ Implemented; server-side extraction routes validate both job and candidate output |
+| Screening persistence | ✅ Prisma: screenings, requirements, candidates, matches, scoring runs |
+| Decisions, notes, weight recompute | ✅ Persisted through `/api/screenings/*`; recompute creates a new `ScoringRun` |
+| Workspace settings | ✅ Provider/model/URL + default weights persisted; real Ollama connection check |
 | Batch pipeline | ✅ Implemented; **not wired to the wizard** |
-| Persistence | ⚠️ Browser `localStorage` only |
-| Prisma schema + seed | ⚠️ Work in progress; the app does **not** read/write the DB yet |
 | Resume upload/parsing | ✅ PDF/DOCX/TXT/MD parsed server-side; no OCR for scanned PDFs |
 | Authentication, organizations, RBAC | ❌ None yet |
 
-Concretely: uploaded files go to `/api/ingest`, where PDF/DOCX/TXT/MD text is extracted and invalid files are reported individually. The wizard then screens each candidate through the validated offline extractor and the deterministic engine. Sample mode skips the upload and uses fictional fixtures, and the resulting screening is labelled **Sample**. Files are parsed per run and not stored. Candidate/provider extraction still runs in the browser, so the implemented Ollama provider is not yet wired through a server route. Screenings and decisions live in `localStorage`. Market data comes from `lib/data/sample-data.ts` and is always labelled **Sample**.
+Concretely: uploaded files go to `/api/ingest`, where PDF/DOCX/TXT/MD text is extracted and invalid files are reported individually. The wizard then calls `/api/extract/job` and `/api/extract/candidate`; provider configuration stays server-side, so Ollama works without CORS. Responses contain validated structured data, warnings, and fallback metadata, never raw model completions. The browser posts validated profiles to `/api/screenings`, where the server re-validates them, runs the deterministic matching/scoring/routing engine, and persists the screening, candidates, matches, and a `ScoringRun`. Sample mode skips the upload and uses fictional fixtures, and the resulting screening is labelled **Sample**. Files are parsed per run and not stored; the extracted profile and evidence excerpts are. Market data comes from `lib/data/sample-data.ts` and is always labelled **Sample**.
 
 Closing these gaps is the job of [`docs/ROADMAP.md`](./docs/ROADMAP.md).
 
@@ -100,13 +104,13 @@ cp .env.example .env
 # 3. Generate the Prisma client and prepare the local database
 npm run db:generate
 npm run db:push
-npm run db:seed          # optional: seeds an organization + demo user
+npm run db:seed          # seeds an organization, demo user, and default settings
 
 # 4. Run the app
 npm run dev              # http://localhost:3000
 ```
 
-The app runs without a database today — Prisma is not yet on the request path — but `db:generate` is required before typechecking or seeding because `prisma/generated/` is git-ignored.
+The app requires an initialized database. `db:generate` is required before typechecking or seeding because `prisma/generated/` is git-ignored; `db:push` and `db:seed` create the tables and default `WorkspaceSettings`. If they are skipped, API routes return `503 database_not_initialized` with instructions instead of silently falling back.
 
 ### Environment
 
@@ -119,7 +123,7 @@ NEXT_PUBLIC_APP_NAME="Role Fit"
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
 ```
 
-To use a local model, start Ollama and set `AI_PROVIDER="ollama"`. Extraction currently runs in the client; real deployments should move it behind a server route (see roadmap Phase 1.4) so Ollama does not need CORS.
+To use a local model, start Ollama and choose it in **Settings**. Extraction runs through the server-side `/api/extract/*` routes, so Ollama does not need CORS configuration. The provider, model, URL, and default weights are read from the database (`WorkspaceSettings`) on each request; the environment values above are bootstrap/fallback values. If Ollama is unreachable, the routes fall back to the offline extractor and report `fallbackUsed` plus a warning.
 
 ---
 
@@ -136,7 +140,7 @@ To use a local model, start Ollama and set `AI_PROVIDER="ollama"`. Extraction cu
 | `npm run verify` | typecheck + lint + test — run before claiming work is done |
 | `npm run db:generate` | Generate the Prisma client |
 | `npm run db:push` | Push the schema to SQLite |
-| `npm run db:seed` | Seed organization + demo user |
+| `npm run db:seed` | Seed organization + demo user + default settings |
 | `npm run db:studio` | Open Prisma Studio |
 
 CI (`.github/workflows/ci.yml`) runs `npm ci`, `db:generate`, `verify`, and `build` on every push and pull request to `main`.
@@ -157,7 +161,7 @@ CI (`.github/workflows/ci.yml`) runs `npm ci`, `db:generate`, `verify`, and `bui
 | `/recruitment/[jobId]/candidate/[candidateId]` | Evidence, score breakdown, decision + notes |
 | `/candidates` | Global candidate directory with search |
 | `/insights` | Observed company requirements (sample data) |
-| `/settings` | Provider + default weights UI (not yet persisted) |
+| `/settings` | Provider/model/URL + default weights (persisted in the database) |
 
 ---
 
@@ -190,10 +194,14 @@ Full specification: [`docs/ENGINE.md`](./docs/ENGINE.md).
 ## Project structure
 
 ```text
-app/                    App Router pages (marketing + dashboard shell)
+app/                    App Router pages + server routes (`/api/ingest`, `/api/extract/*`, `/api/screenings/*`, `/api/settings/*`)
 components/             UI primitives, layout shell, recruitment/career views
 lib/
-  ai/                   Provider interface, schemas, mock + Ollama providers, prompts
+  ai/                   Provider interface, schemas, server extraction, mock + Ollama, prompts
+  api/                  Browser clients/contracts + shared rate limiter + route errors
+  db/                   Server-only Prisma client + screening repository
+  settings/             Client-safe settings types + server persistence/provider config
+  screening/            Server extraction orchestration + deterministic scoring helper
   matching/             Requirement ↔ candidate evidence evaluation
   scoring/              Deterministic weighted scoring
   routing/              Queue classification (no auto-reject)
@@ -201,9 +209,9 @@ lib/
   retrieval/            Market grounding (static today)
   batch/                Per-candidate extraction → match → score → route
   pipeline/             Extraction + grounding coordinator
-  store/                Shared localStorage-backed client store
+  store/                API-backed client cache for persisted screenings
   tests/                Deterministic engine assertions
-  data/                 Sample market/screening fixtures
+  data/                 Sample market fixtures + fictional demo resumes
 types/                  Presentation/domain types used by the UI
 prisma/                 Schema, seed, generated client (git-ignored)
 docs/                   Architecture, engine, data model, roadmap
@@ -237,3 +245,16 @@ Contributors and AI agents should read `AGENTS.md` before changing code.
 6. **Local/open-weight AI only.** No proprietary cloud LLM dependency.
 7. **Never present sample data as live market data.** Sample labels stay visible.
 8. **Human decisions are persisted state**, not UI decoration.
+# Batch screening
+
+The recruitment wizard streams server-side candidate progress through
+`POST /api/screenings/batch`. Each candidate is validated, deterministically scored,
+and saved independently, with one retry for transient extraction errors. Run and
+candidate statuses persist in Prisma; use `GET /api/screenings/[jobId]/runs/[runId]`
+to read progress. After updating, run `npm run db:generate` and `npm run db:push`.
+
+Uploads remain limited to 20 files. The text batch API accepts up to 200 candidates
+within request limits. Execution is request-bound, not a resumable background worker;
+completed candidates survive interruption, but automatic resume and request deduplication
+are not implemented. Authentication and tenant isolation are still absent: do not
+expose real candidate data.

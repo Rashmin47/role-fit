@@ -3,7 +3,7 @@
 > **Operating manual for AI agents and new engineers.**
 > Read this file before changing code. Then read the focused docs in [`docs/`](./docs/).
 >
-> Last verified: **2026-10-25** · Next.js **16.4.2** · React **19.3.1** · TypeScript **5.9.3** · Tailwind CSS **4.3.3** · Prisma **7.10.1** · Node **22.x**
+> Last verified: **2026-11-05** · Next.js **16.4.2** · React **19.3.1** · TypeScript **5.9.3** · Tailwind CSS **4.3.3** · Prisma **7.10.1** · Node **22.x**
 
 ---
 
@@ -48,7 +48,7 @@ Break these and you have broken the product:
 8. **Never present sample data as live market data.**
    Whenever data comes from `lib/data/sample-data.ts`, keep the `Sample` / `Sample market dataset` labelling visible.
 9. **Human decisions are persisted state, not UI decoration.**
-   Decisions and notes belong in the screening store (today `localStorage`, eventually the database).
+   Decisions and notes are stored through `/api/screenings/*` in Prisma. The browser store is a cache, not the source of truth.
 
 ---
 
@@ -63,37 +63,39 @@ Use this as the source of truth before planning work.
 | UI primitives + design tokens | ✅ Implemented | `components/ui/`, `app/globals.css` |
 | Career Intelligence views | ✅ Implemented with sample data | `app/(dashboard)/career-intelligence/`, `components/career/` |
 | Company Intelligence | ✅ Implemented with sample data | `app/(dashboard)/insights/page.tsx` |
-| New screening workflow (4 steps) | ✅ UI complete; screens uploads or the labelled sample set | `components/recruitment/NewScreeningWorkflow.tsx` |
-| Candidate table, detail, citations | ✅ Implemented | `components/recruitment/` |
+| New screening workflow (4 steps) | ✅ UI complete; extracts uploads or the labelled sample set, then persists through the server | `components/recruitment/NewScreeningWorkflow.tsx` |
+| Candidate table, detail, citations | ✅ Implemented and database-backed | `components/recruitment/` |
 | Deterministic scoring/matching/routing | ✅ Implemented + tested | `lib/scoring`, `lib/matching`, `lib/routing` |
 | Skill normalization | ✅ Implemented (curated alias map) | `lib/normalization/skills.ts` |
 | Offline mock extractor | ✅ Honest heuristics; no fabricated defaults | `lib/ai/mock-provider.ts`, `lib/ai/resume-heuristics.ts` |
 | Candidate output validation | ✅ Repair/reject + warnings | `validateCandidateProfileOutput()` in `lib/ai/schemas.ts` |
-| Ollama provider | ✅ Implemented; validates job + candidate output, falls back | `lib/ai/ollama-provider.ts` |
-| Batch screening pipeline | ✅ Implemented, **not wired to UI** | `lib/batch/index.ts` |
-| Per-candidate screening orchestration | ✅ Implemented | `lib/screening/screen-candidate.ts` |
+| Ollama provider | ✅ Implemented; server-side routes, validates output, falls back with a warning | `lib/ai/ollama-provider.ts` |
+| Batch screening pipeline | ✅ Wired to wizard; NDJSON progress and durable per-candidate outcomes | `lib/batch/index.ts`, `app/api/screenings/batch/route.ts` |
+| Per-candidate screening orchestration | ✅ Server-side helper + deterministic scoring helper | `lib/screening/screen-candidate.ts`, `lib/screening/score-candidate.ts` |
 | Document ingestion route | ✅ PDF/DOCX/TXT/MD, per-file failures, limits | `app/api/ingest/route.ts` |
+| Provider extraction routes | ✅ Server-side job + candidate extraction with limits, timeouts, validation, fallback metadata | `app/api/extract/` |
+| Screening persistence | ✅ Prisma-backed create/list/detail, decisions, notes, weight recompute | `lib/db/screenings.ts`, `app/api/screenings/` |
+| Workspace settings | ✅ Provider/model/URL + weights persisted in Prisma; Ollama connection check | `lib/settings/`, `app/api/settings/` |
 | Retrieval / market grounding | ⚠️ Static sample repository, not real ingestion | `lib/retrieval/index.ts` |
-| Tool registry | ⚠️ Implemented, not wired to UI or provider | `lib/tools/index.ts` |
-| Persistence | ⚠️ Browser `localStorage` only | `lib/store/screening-store.ts` |
-| Prisma schema + seed | ⚠️ Schema/seed work, **app does not read/write DB** | `prisma/` |
-| Resume file upload/parsing | ✅ PDF/DOCX/TXT/MD server-side; **no OCR** | `app/api/ingest/route.ts` |
-| Settings persistence | ❌ Provider/weights selections are not saved | `app/(dashboard)/settings/page.tsx` |
-| API routes / server actions | ⚠️ Only `/api/ingest` | `app/api/ingest/route.ts` |
+| Tool registry | ✅ Implemented; calculate_experience wired to interval normalization | `lib/tools/index.ts` |
+| Prisma schema + seed | ✅ Applied; app reads/writes screenings, candidates, matches, runs, settings | `prisma/` |
+| Resume file upload/parsing | ✅ PDF/DOCX/TXT/MD server-side; **no OCR**, files not retained | `app/api/ingest/route.ts` |
+| API routes / server actions | ✅ `/api/ingest`, `/api/extract/*`, `/api/screenings/*`, `/api/settings/*`; no server actions yet | `app/api/` |
 | Authentication / organizations / RBAC | ❌ None (shell displays a demo workspace) | — |
-| Automated test runner | ⚠️ Custom assertion script (45 assertions), no Vitest/Playwright | `lib/tests/engine.test.ts` |
+| Automated test runner | ✅ Vitest unit suite + score property tests | `lib/tests/engine.test.ts` |
 | CI | ✅ GitHub Actions verify workflow | `.github/workflows/ci.yml` |
 
 ### The most important known gaps
 
-Real ingestion is wired, but the path is **not production-grade**:
+Real ingestion and persistence are wired, but the path is **not production-grade**:
 
-- Candidate/provider extraction still runs in the browser. The wizard uses the mock provider today; Ollama would need a server route (and no server-only `AI_PROVIDER` value reaches the client).
+- Provider extraction runs on the server through `/api/extract/*`; the browser never reads `AI_PROVIDER` or calls Ollama directly. The selected provider, model, URL, and default weights are read from `WorkspaceSettings` on each request with environment fallback.
 - Uploaded files are parsed per run and not persisted. There is no OCR for scanned/image-only PDFs, no duplicate detection, and no multi-resume candidate merge.
-- The wizard screens candidates directly through `lib/screening`. The `lib/batch` pipeline and Prisma `ScoringRun` / `CandidateProcessingJob` records are still not wired.
-- New screenings and decisions live in `localStorage`, not the database.
+- The wizard posts parsed candidate texts to `/api/screenings/batch`. The server creates a run and candidate jobs, extracts validated facts, scores deterministically, and saves each successful candidate atomically with its progress status. NDJSON streams progress; transient extraction failures retry once.
+- Decisions, notes, and weight recomputes persist through Prisma. Batch processing is request-bound, not a durable worker: process termination can leave unfinished jobs in PROCESSING. Completed candidates remain saved; automatic resume and cross-request idempotency are not implemented.
+- Provider/weight settings are persisted in `WorkspaceSettings`. There is no per-user or per-organization settings scope yet.
 - Job-requirement extraction is heuristic. It no longer invents fallback requirements, but recruiters must review the extracted list.
-- There is no authentication, organization scoping, or RBAC.
+- There is no authentication, organization scoping, or RBAC. All screenings belong to the seeded demo organization when it exists.
 
 Do not claim these are complete. The roadmap exists to close them.
 
@@ -112,8 +114,9 @@ Job description / PDF / DOCX / TXT / MD
         │  per-file failures + truncation flags
         ▼
 ┌──────────────────────────────┐
-│ AI extraction (provider)     │  lib/ai/*
-│ unstructured → typed JSON    │  mock | ollama
+│ Provider extraction (server) │  app/api/extract/job
+│ unstructured → typed JSON    │  app/api/extract/candidate
+│ mock | ollama                │  lib/ai/server-extraction.ts
 └──────────────────────────────┘
         │  validated by lib/ai/schemas.ts
         ▼
@@ -143,10 +146,17 @@ Job description / PDF / DOCX / TXT / MD
 └──────────────────────────────┘
         │
         ▼
-   Human review in the UI  →  decision + notes persisted
+┌──────────────────────────────┐
+│ Persistence (server)         │  app/api/screenings/route.ts
+│ Job + Requirements           │  lib/db/screenings.ts
+│ Candidate + Match + Run      │  Prisma / SQLite
+└──────────────────────────────┘
+        │
+        ▼
+   Human review in the UI  →  decision + notes persisted through Prisma
 ```
 
-The orchestrators are `lib/screening/screen-candidate.ts` (resume text → validate → match → score → route, used by the wizard), `lib/pipeline/index.ts` (extraction + grounding), and `lib/batch/index.ts` (batch extraction → match → score → route, not wired to the UI).
+The orchestrators are `lib/screening/score-candidate.ts` (validated profile → match → score → route), `lib/screening/screen-candidate.ts` (server-side extraction + score), `lib/pipeline/index.ts` (extraction + grounding), and `lib/batch/index.ts` (per-candidate extraction, validation, deterministic scoring, and bounded retry). The live wizard sends parsed texts to `/api/screenings/batch`, which streams progress and persists each outcome through `lib/db/screenings.ts`.
 
 For deep detail see:
 - [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)
@@ -164,6 +174,12 @@ app/
   globals.css                   Tailwind v4 CSS-first theme + base styles
   page.tsx                      Marketing landing page
   api/ingest/route.ts           Server-side PDF/DOCX/TXT/MD → text
+  api/extract/job/route.ts      Server-only job requirement extraction
+  api/extract/candidate/route.ts Server-only candidate extraction
+  api/screenings/route.ts       List + create persisted screenings
+  api/screenings/[jobId]/…      Detail, weight recompute, candidate decisions
+  api/settings/route.ts         Read + save workspace settings
+  api/settings/ollama/route.ts  Real Ollama connectivity/model check
   (dashboard)/
     layout.tsx                  AppShell wrapper
     dashboard/                  Overview
@@ -171,7 +187,7 @@ app/
     recruitment/                Workspace, /new wizard, [jobId], candidate detail
     candidates/                 Global candidate directory (?q= search)
     insights/                   Observed company requirements
-    settings/                   Provider + default weights UI
+    settings/                   Provider + weights (database-backed)
 components/
   layout/AppShell.tsx           Sidebar, header, global search, breadcrumbs
   ui/                           Button, Badge, Card, Input, Callout, StatCard, …
@@ -179,8 +195,19 @@ components/
   career/                       RoleSelector, MarketRequirementsView
 lib/
   ai/                           Provider interface, schemas, mock, ollama, prompts
+  ai/server-extraction.ts       Server-only provider orchestration + validation
+  ai/extraction-contract.ts     Wire contract for /api/extract responses
+  api/extraction-client.ts      Browser client for extraction routes
+  api/screening-client.ts       Browser client for persisted screenings
+  api/screening-contract.ts     Validation + wire contract for screenings
+  api/settings-client.ts        Browser client for workspace settings
+  db/prisma.ts                  Server-only Prisma singleton + SQLite adapter
+  db/screenings.ts              Screening repository + deterministic recompute
+  settings/types.ts             Settings validation/defaults (client-safe)
+  settings/server.ts            Settings persistence + provider config
   ai/resume-heuristics.ts       Honest offline resume extraction + evidence lines
-  screening/screen-candidate.ts Resume text → validate → match → score → route
+  screening/score-candidate.ts  Validated profile → match → score → route
+  screening/screen-candidate.ts Server-side resume text → extraction → score
   matching/                     Requirement ↔ candidate evidence evaluation
   scoring/                      Deterministic weighted scoring
   routing/                      Queue classification
@@ -189,28 +216,26 @@ lib/
   batch/                        Batch screening pipeline
   pipeline/                     Extraction + grounding coordinator
   tools/                        Deterministic tool registry (future function calling)
-  data/sample-data.ts           All demo roles, screenings, candidates, companies
+  data/sample-data.ts           Demo roles/candidates/companies; screenings are DB-backed
   data/demo-resumes.ts          Fictional sample resumes + sample job description
-  store/screening-store.ts      Shared localStorage-backed client store
+  store/screening-store.ts      API-backed client cache (not localStorage)
   tests/engine.test.ts          Assertion-based engine test suite
   utils.ts                      cn(), formatters
 types/index.ts                  Presentation/domain types used by the UI
 prisma/
-  schema.prisma                 Relational target model
-  seed.ts                       Organization + demo user
+  schema.prisma                 Relational model (screenings, matches, settings)
+  seed.ts                       Organization + demo user + default settings
   generated/                    Generated Prisma client (git-ignored)
 prisma.config.ts                Prisma 7 CLI/seed/data-source config
 docs/                           Architecture, engine, data model, roadmap
 ```
 
-### Two type systems — read this before importing types
+### Canonical domain types
 
-| Layer | File | Use it for |
-| --- | --- | --- |
-| **Pipeline / AI contracts** | `lib/ai/schemas.ts` (`StructuredJobRequirements`, `CandidateProfile`, `ExtractedRequirement`) | Extraction, matching, scoring inputs, batch pipeline |
-| **Presentation / domain** | `types/index.ts` (`JobRequirements`, `CandidateExtraction`, `CandidateScoreResult`, `JobScreening`, market types) | UI props, store, sample data, legacy scoring API |
-
-These overlap and are **not yet unified**. Current flow: AI contracts are converted into the presentation shapes in `lib/screening/screen-candidate.ts` (`structuredJobToRequirements`, `candidateProfileToExtraction`), `lib/batch/index.ts`, and `NewScreeningWorkflow.tsx`. When unifying them, do it deliberately and update both the engine tests and the UI — do not add a third shape.
+The domain model is unified in `lib/domain/types.ts` and re-exported through `types/index.ts` and `lib/ai/schemas.ts`:
+- `CandidateProfile` is the single canonical domain shape for candidate facts across extraction, validation, matching, and deterministic scoring. `CandidateExtraction` is aliased to `CandidateProfile` for compatibility.
+- `JobRequirement` / `ExtractedRequirement` and `JobRequirements` / `StructuredJobRequirements` share aligned schemas.
+- Deterministic scoring (`calculateFinalMatchScore`) and batch screening directly consume `CandidateProfile` without pseudo-candidate conversion adapters.
 
 ---
 
@@ -222,7 +247,7 @@ npm install
 cp .env.example .env
 npm run db:generate       # prisma generate (required before typecheck/seed)
 npm run db:push           # push schema to SQLite
-npm run db:seed           # seed organization + demo user
+npm run db:seed           # seed organization + demo user + default settings
 
 # Development
 npm run dev               # Next.js 16 + Turbopack
@@ -299,7 +324,7 @@ Needs Verification  : otherwise
 - The offline extractor never invents employers, degrees, or experience years. Missing evidence stays empty; every extracted skill cites a resume line.
 - Job extraction is line-scoped. In "FastAPI or Django", the later alternative is treated as preferred because the engine has no OR-group type yet. No fallback requirements are invented when nothing matches.
 - Screenings created from the bundled sample resumes carry `isSample: true` and are labelled in the UI.
-- Deterministic test anchor: the fixture in `lib/tests/engine.test.ts` must continue to score **76 / "Review"**. The suite currently has **45 assertions** and also covers candidate validation, resume heuristics, and an end-to-end sample run.
+- Deterministic test anchor: the fixture in `lib/tests/engine.test.ts` must continue to score **76 / "Review"**. The suite currently has **61 assertions**, including batch score parity, retry limits, failure isolation, and batch input validation.
 
 ---
 
@@ -309,11 +334,13 @@ Needs Verification  : otherwise
 
 - App Router only. Pages under `app/(dashboard)/` are wrapped by `AppShell`.
 - **Next 16 dynamic route params are Promises.** Server components `await params`; client components use `React.use(params)`.
-- Prefer server components by default. Add `"use client"` only for interactivity, browser APIs, or the localStorage store.
+- Prefer server components by default. Add `"use client"` only for interactivity, browser APIs, or the API-backed store.
 - Use `next/link` for navigation. Use `ButtonLink` rather than nesting a `<button>` inside a `<Link>`.
-- The only API route today is `app/api/ingest/route.ts` for document text extraction. New routes belong under `app/api/**/route.ts`; keep provider calls and Node-only parsers server-side.
-- Candidate extraction currently runs in the browser through `screenCandidateText()` because the wizard is a client component. Running Ollama calls from the browser requires CORS (`OLLAMA_ORIGINS`) and leaks implementation detail; move extraction behind a server route before offering Ollama in the wizard.
+- API routes live under `app/api/**/route.ts`. `/api/ingest` parses documents; `/api/extract/*` calls providers; `/api/screenings/*` persists screenings/decisions; `/api/settings/*` manages configuration. Keep provider calls, Prisma, and Node-only parsers server-side.
+- The wizard never imports `getAIProvider()`, Prisma, or environment configuration. It extracts job requirements through the job route, then sends resume texts to `/api/screenings/batch`, where the server validates profiles, runs `scoreCandidateProfile()`, and persists the results.
+- Provider routes return validated structured data, validation warnings, and fallback metadata — never raw model completions. Keep request limits and timeouts in the route, not the UI.
 - The ingest route is deliberately stateless. Do not write uploads to disk or add persistence there without a storage/privacy design.
+- Provider extraction routes enforce: 50k job chars, 200k candidate chars, 30 job / 60 candidate requests per minute per client, and a 60s timeout. Ollama has a 55s request timeout and falls back to the offline extractor. Keep these limits and the fallback metadata in the route/server layer.
 
 ### Styling
 
@@ -345,8 +372,9 @@ Needs Verification  : otherwise
 
 - Screening state is a **shared module-level external store** consumed via `useSyncExternalStore`.
   Do not reintroduce a per-component `useState` copy; decisions must stay in sync across dashboard, shortlist, and detail views.
-- localStorage key: `rolefit_screenings_state_v1` (legacy `nirman_screenings_state_v1` is read as a fallback).
-- Settings (`AI_PROVIDER`, weights) are currently UI-only. Persist them through the database or a settings store before claiming configuration is durable.
+- The store is an **API-backed cache**. Prisma is the source of truth; the store calls `/api/screenings` and applies optimistic decision updates with rollback on failure.
+- Do not reintroduce `localStorage` as a correctness path. Legacy keys are no longer read.
+- Workspace settings live in the `WorkspaceSettings` row; `AI_PROVIDER` and the Ollama environment variables are bootstrap/fallback values only. Changes made in the UI take effect on the next extraction request.
 
 ### Naming
 
@@ -390,11 +418,11 @@ Needs Verification  : otherwise
 6. **The wizard screens uploads through `/api/ingest`; sample mode is the only path that uses `DEMO_RESUME_POOL`.** Do not reintroduce a hidden demo fallback.
 7. **Scanned/image-only PDFs are not supported.** `unpdf` returns no text, and the route reports a per-file error. Do not score a blank document as a candidate.
 8. **Ingestion limits are real.** 20 files, 10 MB per file, 50 MB per request, 200k characters per document. Oversized text is truncated and recorded in `processingNotes`.
-9. **Candidate extraction still runs in the browser.** `screenCandidateText()` calls `getAIProvider()` client-side; `AI_PROVIDER` is server-only, so the wizard currently uses the mock provider. Ollama needs a server route (and CORS if kept client-side).
-10. **`recomputeScoresWithWeights` reconstructs a pseudo-profile from stored matches.** It is a UI recomputation, not a re-extraction. Do not treat it as an audit-grade rescore.
-11. **No auth or tenant isolation.** The `Apex Engineering` workspace in the shell is cosmetic. Do not expose real candidate data.
-12. **Prisma is not wired into the app.** Importing `prisma/generated/client` into a client component will fail; use it only in server code.
-13. **`prisma generate` is required** after a clean clone before typecheck/seed because the generated client is git-ignored.
+9. **Provider extraction is server-only.** The wizard calls `/api/extract/job` and `/api/extract/candidate`; `AI_PROVIDER`, Ollama config, prompts, and provider modules must not enter a client bundle. `lib/screening/screen-candidate.ts` is for server/tests; use `lib/screening/score-candidate.ts` in the browser. Ollama falls back to the offline extractor and reports that through `provider.fallbackUsed` / `provider.warning`.
+10. **Weight recompute re-scores from the stored validated profile, not by re-extraction.** `/api/screenings/[jobId]` PATCH creates a new `ScoringRun` and recomputes from `Candidate.profileJson`. It is deterministic and auditable, but it does not re-read the original resume or re-run the provider.
+11. **No auth or tenant isolation.** The `Apex Engineering` workspace in the shell is cosmetic. Screenings are attached to the seeded demo organization when it exists. Do not expose real candidate data.
+12. **Prisma is server-only.** Importing `prisma/generated/client`, `lib/db/prisma.ts`, or `lib/db/screenings.ts` into a client component will fail; use `/api/screenings/*` instead. The wizard and store talk to the API, never the database.
+13. **`prisma generate` is required** after a clean clone before typecheck/seed because the generated client is git-ignored. Run `db:push` and `db:seed` before using the app; routes return 503 `database_not_initialized` otherwise.
 14. **`npm audit` reports a dev-only `braces` advisory** through `eslint-config-next`. Do **not** run `npm audit fix --force`; it downgrades Next/ESLint. Re-check upstream.
 15. **TypeScript 7 is intentionally not adopted yet.** Next 16 / Prisma 7 are validated against TS 5.9. Revisit after upstream support.
 16. **Prisma 8 is a release candidate.** Stay on stable Prisma 7.10.x until 8 is GA.
@@ -408,9 +436,9 @@ Full detail, acceptance criteria, and sequencing: [`docs/ROADMAP.md`](./docs/ROA
 | Phase | Theme | Highest-value outcome |
 | --- | --- | --- |
 | 0 ✅ | Platform upgrade + agent docs | Next 16 / React 19 / Tailwind 4 / Prisma 7 on stable, verified tooling |
-| 1 🟡 | Correctness & consolidation | Candidate validation + honest heuristics shipped; type unification, server-side provider extraction, and settings persistence remain |
-| 2 | Persistence | Prisma repositories + server actions; screenings/decisions/audit survive reloads |
-| 3 🟡 | Real ingestion | PDF/DOCX/TXT/MD extraction and upload screening shipped; persistence, OCR, dedupe, and the batch pipeline remain |
+| 1 🟡 | Correctness & consolidation | Candidate validation + honest heuristics + server-side provider extraction + persisted settings shipped; type unification remains |
+| 2 🟡 | Persistence | Prisma-backed screenings, decisions, notes, weight recompute, and `ScoringRun` audit shipped; server actions, extraction history UI, and org scoping remain |
+| 3 🟡 | Real ingestion | Parsing, upload screening, streamed batch progress and per-candidate persistence shipped; OCR, dedupe, durable workers and idempotent resume remain |
 | 4 | Market intelligence | Ingested postings + evidence sources replace static market samples |
 | 5 | Production readiness | Auth, organization scoping, RBAC, privacy, observability, e2e tests |
 

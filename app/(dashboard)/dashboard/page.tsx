@@ -11,6 +11,7 @@ import { Progress } from "@/components/ui/Input";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
+import { Callout } from "@/components/ui/Callout";
 import { useScreeningStore } from "@/lib/store/screening-store";
 import { formatYears } from "@/lib/utils";
 
@@ -48,7 +49,7 @@ function Metric({
 }
 
 export default function DashboardPage() {
-  const { screenings } = useScreeningStore();
+  const { screenings, isLoading, error } = useScreeningStore();
   // Server snapshot stays generic so hydration is deterministic; the client
   // snapshot upgrades to a time-aware greeting after hydration.
   const greeting = React.useSyncExternalStore(
@@ -79,21 +80,31 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 divide-y divide-nirman-border overflow-hidden rounded-lg border border-nirman-border bg-white sm:grid-cols-4 sm:divide-y-0 sm:divide-x">
         <Metric
           label="Active screenings"
-          value={screenings.length}
+          value={isLoading ? "—" : screenings.length}
           hint="Currently in review"
         />
         <Metric
           label="Candidates"
-          value={totalCandidates}
+          value={isLoading ? "—" : totalCandidates}
           hint="Evaluated by the engine"
         />
         <Metric
           label="Awaiting review"
-          value={pendingReviewCandidates.length}
+          value={isLoading ? "—" : pendingReviewCandidates.length}
           hint="Human decision pending"
         />
-        <Metric label="Shortlisted" value={shortlisted} hint="Marked by a reviewer" />
+        <Metric
+          label="Shortlisted"
+          value={isLoading ? "—" : shortlisted}
+          hint="Marked by a reviewer"
+        />
       </div>
+
+      {error && (
+        <Callout tone="danger" title="Could not load the workspace">
+          {error}
+        </Callout>
+      )}
 
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
@@ -108,7 +119,11 @@ export default function DashboardPage() {
             </Link>
           </CardHeader>
           <CardContent className="p-0">
-            {screenings.length === 0 ? (
+            {isLoading ? (
+              <div className="p-5 text-[13px] text-nirman-text-secondary">
+                Loading persisted screenings…
+              </div>
+            ) : screenings.length === 0 ? (
               <div className="p-5">
                 <EmptyState
                   title="No active screenings"
@@ -188,7 +203,11 @@ export default function DashboardPage() {
             </span>
           </CardHeader>
           <CardContent className="p-0">
-            {pendingReviewCandidates.length === 0 ? (
+            {isLoading ? (
+              <div className="p-5 text-[13px] text-nirman-text-secondary">
+                Loading the review queue…
+              </div>
+            ) : pendingReviewCandidates.length === 0 ? (
               <div className="p-5">
                 <EmptyState
                   title="Everything is reviewed"

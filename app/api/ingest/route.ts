@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import mammoth from "mammoth";
 import { extractText, getDocumentProxy } from "unpdf";
+import { checkRateLimit, clientIdentifier } from "@/lib/api/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,27 +28,6 @@ interface FailedDocument {
   name: string;
   size: number;
   error: string;
-}
-
-// Best-effort, single-instance rate limit. A durable deployment should move
-// this to a shared store (Redis/DB) or edge middleware.
-const rateBuckets = new Map<string, { count: number; resetAt: number }>();
-
-function checkRateLimit(identifier: string): boolean {
-  const now = Date.now();
-  const bucket = rateBuckets.get(identifier);
-
-  if (!bucket || bucket.resetAt <= now) {
-    rateBuckets.set(identifier, {
-      count: 1,
-      resetAt: now + RATE_LIMIT_WINDOW_MS,
-    });
-    return true;
-  }
-
-  if (bucket.count >= RATE_LIMIT_MAX) return false;
-  bucket.count += 1;
-  return true;
 }
 
 function sanitizeFilename(name: string): string {
@@ -158,19 +138,20 @@ async function parseFile(file: File): Promise<IngestedDocument> {
   };
 }
 
-function clientIdentifier(request: Request): string {
-  return (
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip") ||
-    "local"
-  );
-}
-
 export async function POST(request: Request) {
-  if (!checkRateLimit(clientIdentifier(request))) {
+  const rateLimit = checkRateLimit(
+    `ingest:${clientIdentifier(request)}`,
+    RATE_LIMIT_MAX,
+    RATE_LIMIT_WINDOW_MS
+  );
+
+  if (!rateLimit.allowed) {
     return NextResponse.json(
       { error: "Too many upload requests. Wait a minute and try again." },
-      { status: 429 }
+      {
+        status: 429,
+        headers: { "Retry-After": String(rateLimit.retryAfterSeconds) },
+      }
     );
   }
 

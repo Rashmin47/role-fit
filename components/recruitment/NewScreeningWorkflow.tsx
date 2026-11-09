@@ -13,16 +13,18 @@ import {
   DEMO_RESUME_POOL,
   type DemoResume,
 } from "@/lib/data/demo-resumes";
-import {
-  getAIProvider,
+import type {
   StructuredJobRequirements,
   ExtractedRequirement,
-} from "@/lib/ai/provider";
+} from "@/lib/ai/schemas";
 import {
-  screenCandidateText,
-  structuredJobToRequirements,
-} from "@/lib/screening/screen-candidate";
-import { JobScreening, CandidateScoreResult } from "@/types";
+  requestJobExtraction,
+} from "@/lib/api/extraction-client";
+import { createBatchScreening } from "@/lib/api/screening-client";
+import type {
+  BatchCandidateProgress,
+  CreateBatchScreeningInput,
+} from "@/lib/api/screening-contract";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
@@ -116,6 +118,12 @@ export function NewScreeningWorkflow() {
   const [extractionError, setExtractionError] = React.useState<string | null>(
     null
   );
+  const [jobExtractionWarnings, setJobExtractionWarnings] = React.useState<
+    string[]
+  >([]);
+  const [jobFallbackWarning, setJobFallbackWarning] = React.useState<
+    string | null
+  >(null);
   const [newSkillInput, setNewSkillInput] = React.useState("");
 
   const [stagedSources, setStagedSources] = React.useState<StagedSource[]>([]);
@@ -123,6 +131,8 @@ export function NewScreeningWorkflow() {
     Array<{ name: string; error: string }>
   >([]);
   const [runError, setRunError] = React.useState<string | null>(null);
+  const [candidateProgress, setCandidateProgress] = React.useState<BatchCandidateProgress[]>([]);
+  const [savedScreeningId, setSavedScreeningId] = React.useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const [workflowStages, setWorkflowStages] = React.useState<WorkflowStageItem[]>([
@@ -147,6 +157,8 @@ export function NewScreeningWorkflow() {
   const handleAnalyzeJob = async () => {
     setIsExtracting(true);
     setExtractionError(null);
+    setJobExtractionWarnings([]);
+    setJobFallbackWarning(null);
 
     setWorkflowStages([
       { id: "job_received", label: "Job description received", status: "completed" },
@@ -170,12 +182,17 @@ export function NewScreeningWorkflow() {
     try {
       await new Promise((r) => setTimeout(r, 400));
 
-      const provider = getAIProvider();
-      const structured = await provider.extractJobRequirements(
-        jobTitle,
-        jobDescription
-      );
+      const extraction = await requestJobExtraction(jobTitle, jobDescription);
+      const structured = extraction.requirements;
       structured.minimumExperienceYears = minExperience;
+
+      setJobExtractionWarnings(extraction.warnings);
+      setJobFallbackWarning(
+        extraction.provider.warning ??
+          (extraction.provider.fallbackUsed
+            ? "The local model was unavailable; the offline extractor was used instead."
+            : null)
+      );
 
       setWorkflowStages([
         { id: "job_received", label: "Job description received", status: "completed" },
@@ -198,7 +215,7 @@ export function NewScreeningWorkflow() {
 
       setExtractedRequirements(structured);
       setStep(2);
-    } catch {
+    } catch (error) {
       setWorkflowStages((previous) =>
         previous.map((stage) =>
           stage.status === "in_progress"
@@ -207,7 +224,9 @@ export function NewScreeningWorkflow() {
         )
       );
       setExtractionError(
-        "The local extractor could not read this description. Try again, or write a more specific job description."
+        error instanceof Error
+          ? error.message
+          : "The local extractor could not read this description. Try again, or write a more specific job description."
       );
     } finally {
       setIsExtracting(false);
@@ -375,6 +394,8 @@ export function NewScreeningWorkflow() {
 
     setRunError(null);
     setIngestErrors([]);
+    setCandidateProgress([]);
+    setSavedScreeningId(null);
     setStep(4);
     setScreeningStages(createScreeningStages());
 
@@ -388,15 +409,6 @@ export function NewScreeningWorkflow() {
         )
       );
     };
-
-    const newJobId = `screening-${Date.now().toString(36)}`;
-    const requirements = structuredJobToRequirements(extractedRequirements, {
-      id: `job-req-${newJobId}`,
-      title: jobTitle,
-      department,
-      location,
-      rawDescription: jobDescription,
-    });
 
     let currentStage = "reading_documents";
 
@@ -454,65 +466,15 @@ export function NewScreeningWorkflow() {
 
       updateStage("reading_documents", "completed");
 
-      // 2. Each candidate is extracted, validated, matched, and scored
-      // independently. One malformed resume cannot abort the run.
+      // 2. Each candidate is extracted and validated independently. One
+      // malformed resume cannot abort the run.
       currentStage = "extracting_profiles";
       updateStage("extracting_profiles", "in_progress");
 
-      const candidates: CandidateScoreResult[] = [];
-      const candidateFailures: Array<{ name: string; error: string }> = [];
-
-      for (let index = 0; index < sources.length; index++) {
-        const source = sources[index];
-        try {
-          const candidate = await screenCandidateText({
-            candidateId: `cand-${newJobId}-${index + 1}`,
-            name: source.name.replace(/\.(pdf|docx|txt|md)$/i, ""),
-            text: source.text,
-            requirements,
-          });
-          candidates.push(candidate);
-        } catch (error) {
-          candidateFailures.push({
-            name: source.name,
-            error:
-              error instanceof Error
-                ? error.message
-                : "Candidate extraction failed.",
-          });
-        }
-      }
-
-      if (candidates.length === 0) {
-        throw new Error(
-          "No candidates could be extracted from the staged documents."
-        );
-      }
-
-      updateStage("extracting_profiles", "completed");
-
-      // 3. Matching and scoring happened inside the deterministic engine for
-      // each candidate. This stage records that the work is complete.
-      currentStage = "matching_scoring";
-      updateStage("matching_scoring", "in_progress");
-      updateStage("matching_scoring", "completed");
-
-      if (candidateFailures.length > 0) {
-        setIngestErrors((previous) => [
-          ...previous,
-          ...candidateFailures.map((failure) => ({
-            name: failure.name,
-            error: `Could not score: ${failure.error}`,
-          })),
-        ]);
-      }
-
-      // 4. Sort and hand the queue to human review.
-      currentStage = "building_queue";
-      updateStage("building_queue", "in_progress");
-      candidates.sort((a, b) => b.totalScore - a.totalScore);
-
       const processingNotes: string[] = [];
+      if (jobFallbackWarning) {
+        processingNotes.push(`Job extraction: ${jobFallbackWarning}`);
+      }
       if (parseFailures.length > 0) {
         processingNotes.push(
           `${parseFailures.length} document(s) could not be read: ${parseFailures
@@ -526,35 +488,58 @@ export function NewScreeningWorkflow() {
             .join(", ")}.`
         );
       }
-      if (candidateFailures.length > 0) {
-        processingNotes.push(
-          `${candidateFailures.length} candidate(s) could not be scored: ${candidateFailures
-            .map((failure) => failure.name)
-            .join(", ")}.`
-        );
-      }
 
-      const newScreening: JobScreening = {
-        id: newJobId,
-        title: jobTitle,
-        department,
-        location,
-        createdAt: new Date().toISOString(),
-        status: "ready",
-        candidateCount: candidates.length,
-        reviewedCount: 0,
-        shortlistedCount: 0,
-        requirements,
-        candidates,
-        isSample: stagedSources.some((source) => source.sample) || undefined,
+      // 3. The server validates the profiles, runs the deterministic matcher,
+      // scores every candidate, and persists the screening. The browser never
+      // sends or stores a score of its own.
+      currentStage = "matching_scoring";
+      updateStage("matching_scoring", "in_progress");
+
+      const payload: CreateBatchScreeningInput = {
+        title: jobTitle.trim(),
+        department: department.trim(),
+        location: location.trim(),
+        rawDescription: jobDescription,
+        isSample: stagedSources.some((source) => source.sample),
         processingNotes:
           processingNotes.length > 0 ? processingNotes : undefined,
+        requirements: extractedRequirements,
+        candidates: sources.map((source) => ({ name: source.name.replace(/\.(pdf|docx|txt|md)$/i, ""), sourceName: source.name, text: source.text })),
       };
 
-      addScreening(newScreening);
+      const result = await createBatchScreening(payload, (event) => {
+        if (event.type === "start") {
+          setSavedScreeningId(event.screeningId);
+          setCandidateProgress(event.candidates.map((candidate) => ({ ...candidate, status: "QUEUED" })));
+        } else if (event.type === "candidate") {
+          setCandidateProgress((previous) => previous.map((candidate) => candidate.index === event.candidate.index ? event.candidate : candidate));
+        }
+      });
+      updateStage("extracting_profiles", "completed");
+
+      if (result.failed.length > 0) {
+        setIngestErrors((previous) => [
+          ...previous,
+          ...result.failed.map((failure) => ({
+            name: failure.name,
+            error: `Could not score: ${failure.error}`,
+          })),
+        ]);
+      }
+
+      updateStage("matching_scoring", "completed");
+      if (result.screening.candidateCount === 0) {
+        throw new Error("No candidates could be screened. Failure details were saved in the recruitment workspace.");
+      }
+
+      // 4. Hand the persisted queue to human review.
+      currentStage = "building_queue";
+      updateStage("building_queue", "in_progress");
+
+      addScreening(result.screening);
       updateStage("building_queue", "completed");
       await new Promise((resolve) => setTimeout(resolve, 250));
-      router.push(`/recruitment/${newJobId}`);
+      router.push(`/recruitment/${result.screening.id}`);
     } catch (error) {
       setRunError(
         error instanceof Error
@@ -568,6 +553,12 @@ export function NewScreeningWorkflow() {
       );
     }
   };
+
+  const jobExtractionNotes = [jobFallbackWarning, ...jobExtractionWarnings].filter(
+    (warning): warning is string =>
+      Boolean(warning) &&
+      warning !== "No technical requirements extracted from text"
+  );
 
   const requirementGroups = extractedRequirements
     ? [
@@ -757,6 +748,16 @@ export function NewScreeningWorkflow() {
                   least one required skill below before screening.
                 </Callout>
               )}
+
+            {jobExtractionNotes.length > 0 && (
+              <Callout tone="warning" title="Extraction notes">
+                <ul className="space-y-1">
+                  {jobExtractionNotes.map((warning, index) => (
+                    <li key={`${warning}-${index}`}>{warning}</li>
+                  ))}
+                </ul>
+              </Callout>
+            )}
 
             {requirementGroups.map((group) => (
               <div key={group.title} className="space-y-2.5">
@@ -1023,13 +1024,32 @@ export function NewScreeningWorkflow() {
               </CardTitle>
               <p className="mt-0.5 text-[13px] text-nirman-text-secondary">
                 {runError
-                  ? "No results were saved. Fix the issue and run again."
+                  ? "Completed results may be saved. Check the recruitment workspace before starting another run."
                   : "Reading documents, extracting evidence, then matching and scoring deterministically."}
               </p>
             </div>
           </CardHeader>
           <CardContent className="space-y-6 py-6">
             <WorkflowStatus stages={screeningStages} title="Pipeline" />
+            {stagedSources.some((source) => source.sample) && <p className="text-xs text-nirman-text-muted">Sample candidate set · fictional demo data</p>}
+            {candidateProgress.length > 0 && (
+              <section aria-label="Candidate processing progress" className="space-y-3">
+                <p role="status" className="text-[13px] text-nirman-text-secondary">
+                  {candidateProgress.filter((candidate) => candidate.status === "COMPLETED" || candidate.status === "FAILED").length}/{candidateProgress.length} processed · {candidateProgress.filter((candidate) => candidate.status === "FAILED").length} failed
+                </p>
+                <ul className="max-h-72 divide-y divide-nirman-border overflow-y-auto rounded-md border border-nirman-border">
+                  {candidateProgress.map((candidate) => (
+                    <li key={candidate.index} className="flex items-center justify-between gap-3 px-3 py-2 text-[13px]">
+                      <span className="min-w-0 text-nirman-dark">{candidate.sourceName}
+                        {candidate.error && <span className="block text-xs text-nirman-danger-text">{candidate.error}</span>}
+                        {candidate.fallbackUsed && <span className="block text-xs text-nirman-text-muted">Offline extractor fallback</span>}
+                      </span>
+                      <span className="shrink-0 text-xs text-nirman-text-secondary">{candidate.status === "COMPLETED" ? `Saved · ${candidate.score}/100` : candidate.status === "PROCESSING" ? "Processing…" : candidate.status === "FAILED" ? "Failed" : "Queued"}{(candidate.attempts ?? 0) > 1 ? " · retried" : ""}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
 
             {ingestErrors.length > 0 && (
               <Callout tone="warning" title="Some documents were skipped">
@@ -1050,6 +1070,7 @@ export function NewScreeningWorkflow() {
                   {runError}
                 </Callout>
                 <div className="flex justify-center">
+                  {savedScreeningId && <Button variant="secondary" onClick={() => router.push(`/recruitment/${savedScreeningId}`)}>View saved screening</Button>}
                   <Button
                     variant="secondary"
                     onClick={() => {

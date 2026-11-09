@@ -12,7 +12,8 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "tsx lib/tests/engine.test.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "verify": "npm run typecheck && npm run lint && npm test",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
@@ -43,6 +44,7 @@
     "prisma": "^7.10.1",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^5.1.0"
   }
 }

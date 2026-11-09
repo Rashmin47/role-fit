@@ -5,6 +5,7 @@
  */
 
 import { normalizeSkillName } from "../normalization/skills";
+import { calculateExperienceFromDates } from "../normalization/experience";
 import { SAMPLE_CAREER_ROLES } from "../data/sample-data";
 
 export interface ToolDefinition {
@@ -79,16 +80,28 @@ export class ToolRegistry {
         },
         required: ["intervals"],
       },
-      handler: (args: { intervals: Array<{ startYear: number; endYear?: number }> }) => {
-        const currentYear = new Date().getFullYear();
-        let total = 0;
-        for (const item of args.intervals || []) {
-          const end = item.endYear || currentYear;
-          const diff = Math.max(0, end - item.startYear);
-          total += diff;
-        }
+      handler: (args: {
+        intervals: Array<{ startDate?: string; endDate?: string; isCurrent?: boolean; company?: string; title?: string }>;
+        asOf?: string;
+      }) => {
+        const asOf = args.asOf ? new Date(args.asOf) : new Date();
+        const experience = (args.intervals || []).map((interval) => ({
+          company: interval.company || "Company",
+          title: interval.title || "Role",
+          startDate: interval.startDate,
+          endDate: interval.endDate,
+          isCurrent: interval.isCurrent,
+          years: 0,
+          description: "",
+          technologies: [],
+        }));
+        const result = calculateExperienceFromDates(experience, undefined, { asOf });
         return {
-          totalYears: Math.min(20, Math.max(0.5, total)),
+          totalYears: result.calculatedYears,
+          totalMonths: result.totalMonths,
+          overlappingMonths: result.overlappingMonths,
+          hasOverlaps: result.hasOverlaps,
+          explanation: result.timelineExplanation,
         };
       },
     });

@@ -58,20 +58,34 @@ export default function JobScreeningDetailPage({
   params: Promise<{ jobId: string }>;
 }) {
   const { jobId } = React.use(params);
-  const { screenings, updateCandidateDecision, recomputeScoresWithWeights } =
-    useScreeningStore();
+  const {
+    screenings,
+    isLoading,
+    error,
+    updateCandidateDecision,
+    recomputeScoresWithWeights,
+  } = useScreeningStore();
 
   const screening = screenings.find((s) => s.id === jobId);
 
   const [showWeightsConfig, setShowWeightsConfig] = React.useState(false);
   const [weights, setWeights] = React.useState<ScoringWeights>(DEFAULT_WEIGHTS);
+  const [isRecomputing, setIsRecomputing] = React.useState(false);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Loading screening" description="Loading persisted screening data…" />
+      </div>
+    );
+  }
 
   if (!screening) {
     return (
       <div className="space-y-6">
         <PageHeader
           title="Screening not found"
-          description="This screening is not available in the current workspace. It may have been created in another browser profile."
+          description="This screening is not available in the current workspace. It may have been deleted."
         />
         <EmptyState
           title="No matching screening"
@@ -94,10 +108,12 @@ export default function JobScreeningDetailPage({
     weights.evidenceQuality;
   const weightsValid = weightsTotal === 100;
 
-  const handleApplyWeights = () => {
-    if (!weightsValid) return;
-    recomputeScoresWithWeights(screening.id, weights);
-    setShowWeightsConfig(false);
+  const handleApplyWeights = async () => {
+    if (!weightsValid || isRecomputing) return;
+    setIsRecomputing(true);
+    const saved = await recomputeScoresWithWeights(screening.id, weights);
+    setIsRecomputing(false);
+    if (saved) setShowWeightsConfig(false);
   };
 
   const strongMatchesCount = screening.candidates.filter(
@@ -130,6 +146,12 @@ export default function JobScreeningDetailPage({
           </>
         }
       />
+
+      {error && (
+        <Callout tone="danger" title="The last action could not be saved">
+          {error}
+        </Callout>
+      )}
 
       {screening.isSample && (
         <Callout tone="neutral" title="Sample screening">
@@ -258,9 +280,9 @@ export default function JobScreeningDetailPage({
                 variant="primary"
                 size="sm"
                 onClick={handleApplyWeights}
-                disabled={!weightsValid}
+                disabled={!weightsValid || isRecomputing}
               >
-                Recompute scores
+                {isRecomputing ? "Recomputing…" : "Recompute scores"}
               </Button>
             </div>
           </CardContent>

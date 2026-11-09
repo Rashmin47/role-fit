@@ -1,5 +1,5 @@
 import {
-  CandidateExtraction,
+  CandidateProfile,
   JobRequirements,
   ScoringWeights,
   CandidateScoreResult,
@@ -7,7 +7,11 @@ import {
   SkillGap,
   MatchStatus,
 } from "@/types";
-import { matchSkills, normalizeSkillName } from "../normalization/skills";
+import {
+  evaluateRequirementMatch,
+  evaluateCandidateMatch,
+  type RequirementMatchItem,
+} from "../matching";
 
 export const DEFAULT_SCORING_WEIGHTS: ScoringWeights = {
   requiredSkills: 50,
@@ -18,12 +22,13 @@ export const DEFAULT_SCORING_WEIGHTS: ScoringWeights = {
 
 /**
  * Deterministic Skill Scoring
- * Evaluates each required skill against candidate's extracted skills & experience descriptions.
+ * Consumes evaluated requirement matches from the matching engine.
  */
 export function calculateSkillScore(
-  candidate: CandidateExtraction,
+  candidate: CandidateProfile,
   requiredSkills: JobRequirements["requiredSkills"],
-  maxPoints: number = 50
+  maxPoints: number = 50,
+  precomputedMatches?: RequirementMatchItem[]
 ): { score: number; matches: MatchEvidence[]; missing: string[] } {
   if (!requiredSkills || requiredSkills.length === 0) {
     return { score: maxPoints, matches: [], missing: [] };
@@ -34,59 +39,33 @@ export function calculateSkillScore(
   const matches: MatchEvidence[] = [];
   const missing: string[] = [];
 
-  for (const req of requiredSkills) {
-    const canonicalReq = normalizeSkillName(req.name);
-    
-    // Check in candidate's explicit skills list
-    const foundInSkills = candidate.skills.find((s) => matchSkills(s.name, canonicalReq));
-    
-    // Check in candidate's experience descriptions and project technologies
-    let evidenceText = "";
-    let foundInExperience = false;
+  for (let i = 0; i < requiredSkills.length; i++) {
+    const req = requiredSkills[i];
+    const matchItem = precomputedMatches?.[i] ?? evaluateRequirementMatch(candidate, req);
+    const isMatched = matchItem.status === "MATCH" || matchItem.status === "PARTIAL";
 
-    if (candidate.experience && candidate.experience.length > 0) {
-      for (const exp of candidate.experience) {
-        const hasTech = exp.technologies?.some((t) => matchSkills(t, canonicalReq));
-        const hasDesc = exp.description?.toLowerCase().includes(canonicalReq.toLowerCase());
-        if (hasTech || hasDesc) {
-          foundInExperience = true;
-          evidenceText = `Applied during role as ${exp.title} at ${exp.company} (${exp.years} yrs): "${exp.description.slice(0, 120)}..."`;
-          break;
-        }
-      }
-    }
-
-    if (!foundInExperience && candidate.projects) {
-      for (const proj of candidate.projects) {
-        const hasTech = proj.technologies?.some((t) => matchSkills(t, canonicalReq));
-        if (hasTech) {
-          foundInExperience = true;
-          evidenceText = `Demonstrated in project "${proj.name}": ${proj.description.slice(0, 100)}`;
-          break;
-        }
-      }
-    }
-
-    if (foundInSkills || foundInExperience) {
+    if (isMatched) {
       earnedPoints += pointPerSkill;
       matches.push({
-        requirementId: req.id || `req-${canonicalReq}`,
-        requirementName: canonicalReq,
+        requirementId: matchItem.requirementId,
+        requirementName: matchItem.name,
         matched: true,
-        candidateValue: foundInSkills?.level || (foundInExperience ? "Demonstrated in Work History" : "Present"),
-        evidenceSnippet: evidenceText || `Listed in resume skills profile: "${foundInSkills?.name}"`,
-        sourceDocument: "Resume",
-        confidenceNotes: "Direct keyword and context verification match",
+        candidateValue: matchItem.candidateStatedValue,
+        evidenceSnippet: matchItem.evidenceSnippet,
+        sourceDocument: matchItem.sourceDocument,
+        confidenceNotes: matchItem.status === "MATCH"
+          ? "Direct keyword and context verification match"
+          : `Partial depth stated: ${matchItem.candidateStatedValue}`,
       });
     } else {
-      missing.push(canonicalReq);
+      missing.push(matchItem.name);
       matches.push({
-        requirementId: req.id || `req-${canonicalReq}`,
-        requirementName: canonicalReq,
+        requirementId: matchItem.requirementId,
+        requirementName: matchItem.name,
         matched: false,
-        candidateValue: "Not found",
-        evidenceSnippet: "No direct keyword or project application found in candidate documentation",
-        sourceDocument: "Resume",
+        candidateValue: matchItem.candidateStatedValue || "Not found",
+        evidenceSnippet: matchItem.evidenceSnippet || "No direct keyword or project application found in candidate documentation",
+        sourceDocument: matchItem.sourceDocument || "Resume",
         confidenceNotes: "Absence verified across experience & projects",
       });
     }
@@ -106,8 +85,11 @@ export function calculateSkillScore(
 export function calculateExperienceScore(
   candidateYears: number,
   requiredYears: number,
-  maxPoints: number = 25
+  maxPoints: number = 25,
+  timelineExplanation?: string
 ): { score: number; match: MatchEvidence } {
+  const safeYears = Math.max(0, candidateYears);
+
   if (requiredYears <= 0) {
     return {
       score: maxPoints,
@@ -115,17 +97,17 @@ export function calculateExperienceScore(
         requirementId: "req-experience",
         requirementName: "Minimum Experience",
         matched: true,
-        candidateValue: `${candidateYears} years`,
-        evidenceSnippet: `${candidateYears} years verified across candidate timeline.`,
+        candidateValue: `${safeYears} years`,
+        evidenceSnippet: timelineExplanation || `${safeYears} years verified across candidate timeline.`,
         sourceDocument: "Resume",
       },
     };
   }
 
-  let ratio = candidateYears / requiredYears;
+  let ratio = safeYears / requiredYears;
   if (ratio > 1.25) ratio = 1.25; // slight bonus cap
-  const score = Math.min(maxPoints, Math.round(ratio * maxPoints));
-  const isMatched = candidateYears >= requiredYears;
+  const score = Math.max(0, Math.min(maxPoints, Math.round(ratio * maxPoints)));
+  const isMatched = safeYears >= requiredYears;
 
   return {
     score,
@@ -133,23 +115,25 @@ export function calculateExperienceScore(
       requirementId: "req-experience",
       requirementName: `${requiredYears}+ years relevant experience`,
       matched: isMatched,
-      candidateValue: `${candidateYears.toFixed(1)} years`,
-      evidenceSnippet: `${candidateYears.toFixed(1)} years calculated from employment dates across ${candidateYears > 0 ? "provided" : "0"} positions.`,
+      candidateValue: `${safeYears.toFixed(1)} years`,
+      evidenceSnippet: timelineExplanation || `${safeYears.toFixed(1)} years calculated from employment dates across ${safeYears > 0 ? "provided" : "0"} positions.`,
       sourceDocument: "Resume",
       confidenceNotes: isMatched
-        ? `Meets minimum threshold (${candidateYears.toFixed(1)} >= ${requiredYears} years)`
-        : `Below requirement (${candidateYears.toFixed(1)} < ${requiredYears} years)`,
+        ? `Meets minimum threshold (${safeYears.toFixed(1)} >= ${requiredYears} years)`
+        : `Below requirement (${safeYears.toFixed(1)} < ${requiredYears} years)`,
     },
   };
 }
 
 /**
  * Deterministic Preferred Skill Scoring
+ * Consumes evaluated requirement matches from the matching engine.
  */
 export function calculatePreferredSkillScore(
-  candidate: CandidateExtraction,
+  candidate: CandidateProfile,
   preferredSkills: JobRequirements["preferredSkills"],
-  maxPoints: number = 15
+  maxPoints: number = 15,
+  precomputedMatches?: RequirementMatchItem[]
 ): { score: number; matches: MatchEvidence[] } {
   if (!preferredSkills || preferredSkills.length === 0) {
     return { score: maxPoints, matches: [] };
@@ -159,25 +143,25 @@ export function calculatePreferredSkillScore(
   let earned = 0;
   const matches: MatchEvidence[] = [];
 
-  for (const pref of preferredSkills) {
-    const canonical = normalizeSkillName(pref.name);
-    const found = candidate.skills.some((s) => matchSkills(s.name, canonical)) ||
-      candidate.experience.some((e) => e.technologies?.some((t) => matchSkills(t, canonical)));
+  for (let i = 0; i < preferredSkills.length; i++) {
+    const pref = preferredSkills[i];
+    const matchItem = precomputedMatches?.[i] ?? evaluateRequirementMatch(candidate, pref);
+    const isMatched = matchItem.status === "MATCH" || matchItem.status === "PARTIAL";
 
-    if (found) {
+    if (isMatched) {
       earned += pointPerSkill;
       matches.push({
-        requirementId: pref.id || `pref-${canonical}`,
-        requirementName: `${canonical} (Preferred)`,
+        requirementId: matchItem.requirementId,
+        requirementName: `${matchItem.name} (Preferred)`,
         matched: true,
-        candidateValue: "Found",
-        evidenceSnippet: `Verified in candidate skillset / background`,
-        sourceDocument: "Resume",
+        candidateValue: matchItem.candidateStatedValue || "Found",
+        evidenceSnippet: matchItem.evidenceSnippet || "Verified in candidate skillset / background",
+        sourceDocument: matchItem.sourceDocument || "Resume",
       });
     } else {
       matches.push({
-        requirementId: pref.id || `pref-${canonical}`,
-        requirementName: `${canonical} (Preferred)`,
+        requirementId: matchItem.requirementId,
+        requirementName: `${matchItem.name} (Preferred)`,
         matched: false,
         candidateValue: "Missing",
         evidenceSnippet: "Optional skill not highlighted",
@@ -197,17 +181,13 @@ export function calculatePreferredSkillScore(
  * Evaluates presence of concrete project artifacts, clear employment dates, and descriptive bullets.
  */
 export function calculateEvidenceScore(
-  candidate: CandidateExtraction,
+  candidate: CandidateProfile,
   maxPoints: number = 10
 ): { score: number } {
   let points = 0;
-  // Has detailed experience entries
   if (candidate.experience && candidate.experience.length > 0) points += 4;
-  // Has projects / repositories
   if (candidate.projects && candidate.projects.length > 0) points += 3;
-  // Has education & degree
   if (candidate.education && candidate.education.length > 0) points += 2;
-  // Has certifications or links
   if (candidate.certifications && candidate.certifications.length > 0) points += 1;
 
   return { score: Math.min(maxPoints, points) };
@@ -270,35 +250,60 @@ export function determineRecruiterRecommendation(
 
 /**
  * Complete Match Calculation Pipeline
+ * Consolidates matching, experience calculation, deterministic scoring, and routing.
  */
 export function calculateFinalMatchScore(
-  candidate: CandidateExtraction,
+  candidate: CandidateProfile,
   jobRequirements: JobRequirements,
-  weights: ScoringWeights = DEFAULT_SCORING_WEIGHTS
+  weights: ScoringWeights = DEFAULT_SCORING_WEIGHTS,
+  options: { asOf?: Date } = {}
 ): CandidateScoreResult {
+  // 1. Run deterministic matching and experience calculation in a single pass
+  const candidateMatch = evaluateCandidateMatch(candidate, jobRequirements, options);
+
+  const reqMatches = (jobRequirements.requiredSkills || []).map((req) =>
+    candidateMatch.matchedRequirements.find((m) => m.requirementId === req.id) ||
+    candidateMatch.partialMatches.find((m) => m.requirementId === req.id) ||
+    candidateMatch.missingRequirements.find((m) => m.requirementId === req.id) ||
+    evaluateRequirementMatch(candidate, req)
+  );
+
+  const prefMatches = (jobRequirements.preferredSkills || []).map((pref) =>
+    candidateMatch.matchedRequirements.find((m) => m.requirementId === pref.id) ||
+    candidateMatch.partialMatches.find((m) => m.requirementId === pref.id) ||
+    candidateMatch.missingRequirements.find((m) => m.requirementId === pref.id) ||
+    evaluateRequirementMatch(candidate, pref)
+  );
+
   const skillResult = calculateSkillScore(
     candidate,
     jobRequirements.requiredSkills,
-    weights.requiredSkills
+    weights.requiredSkills,
+    reqMatches
   );
 
   const expResult = calculateExperienceScore(
-    candidate.totalExperienceYears,
+    candidateMatch.calculatedExperienceYears,
     jobRequirements.minimumExperienceYears,
-    weights.experience
+    weights.experience,
+    candidateMatch.timelineExplanation
   );
 
   const prefResult = calculatePreferredSkillScore(
     candidate,
     jobRequirements.preferredSkills,
-    weights.preferredSkills
+    weights.preferredSkills,
+    prefMatches
   );
 
   const evidenceResult = calculateEvidenceScore(candidate, weights.evidenceQuality);
 
-  const totalScore = Math.min(
-    100,
-    skillResult.score + expResult.score + prefResult.score + evidenceResult.score
+  const totalScore = Math.max(
+    0,
+    Math.min(
+      100,
+      skillResult.score + expResult.score + prefResult.score + evidenceResult.score
+    )
   );
 
   const missingPref = prefResult.matches
@@ -316,12 +321,12 @@ export function calculateFinalMatchScore(
   const status = determineRecruiterRecommendation(
     totalScore,
     skillResult.missing.length,
-    candidate.totalExperienceYears,
+    candidateMatch.calculatedExperienceYears,
     jobRequirements.minimumExperienceYears
   );
 
   return {
-    candidateId: candidate.id || `cand-${Math.random().toString(36).substring(2, 9)}`,
+    candidateId: candidate.id || "cand-evaluated",
     candidateName: candidate.name,
     totalScore,
     skillScore: skillResult.score,
@@ -332,7 +337,7 @@ export function calculateFinalMatchScore(
     maxPreferredScore: weights.preferredSkills,
     evidenceScore: evidenceResult.score,
     maxEvidenceScore: weights.evidenceQuality,
-    calculatedExperienceYears: candidate.totalExperienceYears,
+    calculatedExperienceYears: candidateMatch.calculatedExperienceYears,
     requiredExperienceYears: jobRequirements.minimumExperienceYears,
     status,
     decision: "pending",

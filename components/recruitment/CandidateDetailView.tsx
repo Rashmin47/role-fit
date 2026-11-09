@@ -18,7 +18,7 @@ interface CandidateDetailViewProps {
     candidateId: string,
     decision: DecisionStatus,
     notes?: string
-  ) => void;
+  ) => void | boolean | Promise<void | boolean>;
 }
 
 export function CandidateDetailView({
@@ -33,10 +33,24 @@ export function CandidateDetailView({
     candidate.reviewNotes ?? ""
   );
   const [savedSuccess, setSavedSuccess] = React.useState<boolean>(false);
+  const [isSaving, setIsSaving] = React.useState<boolean>(false);
 
-  const handleDecision = (decision: DecisionStatus) => {
+  const handleDecision = async (decision: DecisionStatus) => {
     setActiveDecision(decision);
-    onDecisionChange?.(candidate.candidateId, decision, recruiterNotes);
+    setIsSaving(true);
+    const outcome = await onDecisionChange?.(
+      candidate.candidateId,
+      decision,
+      recruiterNotes
+    );
+    setIsSaving(false);
+
+    if (outcome === false) {
+      // The server rejected the update; revert the optimistic local state.
+      setActiveDecision(candidate.decision);
+      return;
+    }
+
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2500);
   };
@@ -129,6 +143,7 @@ export function CandidateDetailView({
                   variant="secondary"
                   onClick={() => handleDecision(d.value)}
                   aria-pressed={isActive}
+                  disabled={isSaving}
                   className={cn(isActive && d.activeClass)}
                 >
                   <Icon className="h-3.5 w-3.5" />
@@ -375,8 +390,9 @@ export function CandidateDetailView({
                 size="sm"
                 variant="secondary"
                 onClick={() => handleDecision(activeDecision)}
+                disabled={isSaving}
               >
-                Save notes
+                {isSaving ? "Saving…" : "Save notes"}
               </Button>
             </div>
           </CardContent>

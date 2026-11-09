@@ -1,99 +1,157 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import {
+import type {
   JobScreening,
   DecisionStatus,
   ScoringWeights,
+  CandidateScoreResult,
 } from "@/types";
-import { SAMPLE_SCREENINGS } from "../data/sample-data";
-import { calculateFinalMatchScore } from "../scoring";
-
-const STORAGE_KEY = "rolefit_screenings_state_v1";
-const LEGACY_STORAGE_KEY = "nirman_screenings_state_v1";
+import {
+  fetchScreenings,
+  recomputeScreeningOnServer,
+  updateCandidateDecisionOnServer,
+} from "@/lib/api/screening-client";
 
 /**
- * A tiny module-level external store.
+ * Workspace-wide screening store backed by the database API.
  *
- * Why not `useState` + `useEffect`? The screening list is persisted in
- * localStorage and shared by every mounted screen (dashboard, recruitment,
- * candidate detail). A single external store keeps all consumers in sync and
- * lets `useSyncExternalStore` handle hydration without a setState-in-effect.
+ * The store is a module-level external store so every mounted screen
+ * (dashboard, recruitment list, detail, candidate detail) converges on the
+ * same persisted data. localStorage is no longer the source of truth.
  */
+
+type LoadState = "idle" | "loading" | "ready" | "error";
+
+const EMPTY_SCREENINGS: JobScreening[] = [];
+
 let cachedScreenings: JobScreening[] | null = null;
+let loadState: LoadState = "idle";
+let loadError: string | null = null;
+let loadPromise: Promise<void> | null = null;
 const listeners = new Set<() => void>();
-
-function readScreenings(): JobScreening[] {
-  if (typeof window === "undefined") return SAMPLE_SCREENINGS;
-
-  try {
-    const raw =
-      localStorage.getItem(STORAGE_KEY) ??
-      localStorage.getItem(LEGACY_STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as JobScreening[];
-  } catch (error) {
-    console.error("Failed to read screenings from localStorage", error);
-  }
-
-  return SAMPLE_SCREENINGS;
-}
-
-function writeScreenings(screenings: JobScreening[]) {
-  if (typeof window === "undefined") return;
-
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(screenings));
-  } catch (error) {
-    console.error("Failed to save screenings", error);
-  }
-}
 
 function emitChange() {
   for (const listener of listeners) listener();
 }
 
 function getSnapshot(): JobScreening[] {
-  if (cachedScreenings === null) {
-    cachedScreenings = readScreenings();
-  }
-  return cachedScreenings;
+  return cachedScreenings ?? EMPTY_SCREENINGS;
 }
 
 function getServerSnapshot(): JobScreening[] {
-  return SAMPLE_SCREENINGS;
+  return EMPTY_SCREENINGS;
+}
+
+function getLoadStateSnapshot(): LoadState {
+  return loadState;
+}
+
+function getServerLoadStateSnapshot(): LoadState {
+  return "loading";
+}
+
+function getErrorSnapshot(): string | null {
+  return loadError;
+}
+
+function getServerErrorSnapshot(): string | null {
+  return null;
+}
+
+function ensureLoaded(force = false): Promise<void> {
+  if (loadPromise) return loadPromise;
+  if (!force && loadState === "ready") return Promise.resolve();
+
+  loadState = "loading";
+  loadError = null;
+  emitChange();
+
+  loadPromise = fetchScreenings()
+    .then((screenings) => {
+      cachedScreenings = screenings;
+      loadState = "ready";
+    })
+    .catch((error: unknown) => {
+      loadState = "error";
+      loadError =
+        error instanceof Error
+          ? error.message
+          : "The screening workspace could not be loaded.";
+    })
+    .finally(() => {
+      loadPromise = null;
+      emitChange();
+    });
+
+  return loadPromise;
 }
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
+  void ensureLoaded();
 
-  // Keep multiple tabs in sync.
-  const onStorage = (event: StorageEvent) => {
-    if (event.key !== STORAGE_KEY && event.key !== LEGACY_STORAGE_KEY) return;
-    cachedScreenings = readScreenings();
-    emitChange();
-  };
-
-  window.addEventListener("storage", onStorage);
   return () => {
     listeners.delete(listener);
-    window.removeEventListener("storage", onStorage);
   };
 }
 
-function commit(screenings: JobScreening[]) {
-  cachedScreenings = screenings;
-  writeScreenings(screenings);
+function setError(message: string | null) {
+  loadError = message;
   emitChange();
 }
 
-/** @deprecated Prefer the `useScreeningStore` hook. Kept for non-React callers. */
-export function getInitialScreenings(): JobScreening[] {
-  return getSnapshot();
+function replaceScreening(updated: JobScreening) {
+  const current = getSnapshot();
+  cachedScreenings = current.map((screening) =>
+    screening.id === updated.id ? updated : screening
+  );
+  emitChange();
 }
 
-/** @deprecated Prefer the `useScreeningStore` hook. Kept for non-React callers. */
-export function saveScreenings(screenings: JobScreening[]) {
-  commit(screenings);
+function updateScreeningCandidate(
+  jobId: string,
+  candidateId: string,
+  candidate: CandidateScoreResult
+) {
+  const current = getSnapshot();
+  cachedScreenings = current.map((screening) => {
+    if (screening.id !== jobId) return screening;
+    const candidates = screening.candidates.map((existing) =>
+      existing.candidateId === candidateId ? candidate : existing
+    );
+    return {
+      ...screening,
+      candidates: candidates.sort((a, b) => b.totalScore - a.totalScore),
+      reviewedCount: candidates.filter((c) => c.decision !== "pending").length,
+      shortlistedCount: candidates.filter(
+        (c) => c.decision === "shortlisted"
+      ).length,
+    };
+  });
+  emitChange();
+}
+
+function optimisticDecision(
+  jobId: string,
+  candidateId: string,
+  decision: DecisionStatus,
+  notes?: string
+): CandidateScoreResult | null {
+  const screening = getSnapshot().find((item) => item.id === jobId);
+  const candidate = screening?.candidates.find(
+    (item) => item.candidateId === candidateId
+  );
+  if (!screening || !candidate) return null;
+
+  const optimistic: CandidateScoreResult = {
+    ...candidate,
+    decision,
+    reviewNotes: notes ?? candidate.reviewNotes,
+    reviewedAt: decision === "pending" ? undefined : new Date().toISOString(),
+  };
+  updateScreeningCandidate(jobId, candidateId, optimistic);
+  return candidate;
 }
 
 export function useScreeningStore() {
@@ -102,120 +160,83 @@ export function useScreeningStore() {
     getSnapshot,
     getServerSnapshot
   );
+  const state = useSyncExternalStore(
+    subscribe,
+    getLoadStateSnapshot,
+    getServerLoadStateSnapshot
+  );
+  const error = useSyncExternalStore(
+    subscribe,
+    getErrorSnapshot,
+    getServerErrorSnapshot
+  );
 
-  const updateCandidateDecision = (
+  const updateCandidateDecision = async (
     jobId: string,
     candidateId: string,
     decision: DecisionStatus,
     notes?: string
-  ) => {
-    const next = getSnapshot().map((screening) => {
-      if (screening.id !== jobId) return screening;
+  ): Promise<boolean> => {
+    const previous = optimisticDecision(jobId, candidateId, decision, notes);
+    setError(null);
 
-      const candidates = screening.candidates.map((candidate) =>
-        candidate.candidateId === candidateId
-          ? {
-              ...candidate,
-              decision,
-              reviewNotes: notes ?? candidate.reviewNotes,
-              reviewedAt: new Date().toISOString(),
-            }
-          : candidate
+    try {
+      const { candidate } = await updateCandidateDecisionOnServer(
+        jobId,
+        candidateId,
+        { decision, notes }
       );
-
-      return {
-        ...screening,
-        candidates,
-        reviewedCount: candidates.filter((c) => c.decision !== "pending").length,
-        shortlistedCount: candidates.filter(
-          (c) => c.decision === "shortlisted"
-        ).length,
-      };
-    });
-
-    commit(next);
+      updateScreeningCandidate(jobId, candidateId, candidate);
+      return true;
+    } catch (requestError) {
+      if (previous) {
+        updateScreeningCandidate(jobId, candidateId, previous);
+      }
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "The decision could not be saved."
+      );
+      return false;
+    }
   };
 
-  const addScreening = (newScreening: JobScreening) => {
-    commit([newScreening, ...getSnapshot()]);
+  const addScreening = (saved: JobScreening) => {
+    cachedScreenings = [
+      saved,
+      ...getSnapshot().filter((screening) => screening.id !== saved.id),
+    ];
+    loadState = "ready";
+    setError(null);
   };
 
-  const recomputeScoresWithWeights = (
+  const recomputeScoresWithWeights = async (
     jobId: string,
     weights: ScoringWeights
-  ) => {
-    const next = getSnapshot().map((screening) => {
-      if (screening.id !== jobId) return screening;
-
-      const recalculated = screening.candidates.map((candidate) => {
-        // Rebuild the minimum extraction shape required by the deterministic
-        // scorer from the stored evidence. This is a presentation-layer
-        // recompute; it does not re-run AI extraction.
-        const mockExtraction = {
-          id: candidate.candidateId,
-          name: candidate.candidateName,
-          totalExperienceYears: candidate.calculatedExperienceYears,
-          skills: candidate.matches
-            .filter(
-              (match) =>
-                match.matched && !match.requirementName.includes("years")
-            )
-            .map((match) => ({
-              name: match.requirementName.replace(" (Preferred)", ""),
-              level: "Strong" as const,
-            })),
-          experience: [
-            {
-              company: "Previous Tech Ltd",
-              title: "Software Engineer",
-              startDate: "2023-01",
-              years: candidate.calculatedExperienceYears,
-              description: candidate.matches
-                .map((match) => match.evidenceSnippet)
-                .join(". "),
-              technologies: candidate.matches
-                .filter((match) => match.matched)
-                .map((match) => match.requirementName),
-            },
-          ],
-          education: [
-            {
-              institution: "University",
-              degree: "BS",
-              field: "Computer Science",
-            },
-          ],
-        };
-
-        const freshScore = calculateFinalMatchScore(
-          mockExtraction,
-          screening.requirements,
-          weights
-        );
-
-        return {
-          ...candidate,
-          totalScore: freshScore.totalScore,
-          skillScore: freshScore.skillScore,
-          experienceScore: freshScore.experienceScore,
-          preferredScore: freshScore.preferredScore,
-          evidenceScore: freshScore.evidenceScore,
-          status: freshScore.status,
-          scoringWeights: weights,
-        };
-      });
-
-      return {
-        ...screening,
-        candidates: recalculated.sort((a, b) => b.totalScore - a.totalScore),
-      };
-    });
-
-    commit(next);
+  ): Promise<boolean> => {
+    setError(null);
+    try {
+      const { screening } = await recomputeScreeningOnServer(jobId, weights);
+      replaceScreening(screening);
+      return true;
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "The scores could not be recomputed."
+      );
+      return false;
+    }
   };
+
+  const refresh = () => ensureLoaded(true);
 
   return {
     screenings,
+    isLoading: state === "loading" || state === "idle",
+    isReady: state === "ready",
+    error,
+    refresh,
     addScreening,
     updateCandidateDecision,
     recomputeScoresWithWeights,

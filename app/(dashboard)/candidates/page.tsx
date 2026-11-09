@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { ButtonLink } from "@/components/ui/Button";
+import { Callout } from "@/components/ui/Callout";
 import { StatusBadge } from "@/components/ui/Badge";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -16,7 +17,7 @@ import { formatYears } from "@/lib/utils";
 import type { CandidateScoreResult } from "@/types";
 
 function CandidatesDirectory({ initialQuery }: { initialQuery: string }) {
-  const { screenings } = useScreeningStore();
+  const { screenings, isLoading, error } = useScreeningStore();
   const [searchTerm, setSearchTerm] = React.useState(initialQuery);
   const [statusFilter, setStatusFilter] = React.useState("all");
 
@@ -99,6 +100,17 @@ function CandidatesDirectory({ initialQuery }: { initialQuery: string }) {
         ]}
       />
 
+      {error && (
+        <Callout tone="danger" title="Could not load candidates">
+          {error}
+        </Callout>
+      )}
+
+      {isLoading ? (
+        <Card className="p-10 text-center text-[13px] text-nirman-text-secondary">
+          Loading persisted candidates…
+        </Card>
+      ) : (
       <Card className="overflow-hidden">
         {filtered.length === 0 ? (
           <EmptyState
@@ -178,6 +190,7 @@ function CandidatesDirectory({ initialQuery }: { initialQuery: string }) {
           </div>
         )}
       </Card>
+      )}
     </div>
   );
 }

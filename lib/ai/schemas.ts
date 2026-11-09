@@ -3,90 +3,35 @@
  * Type definitions, validators, and contract schemas for AI outputs.
  */
 
-export type RequirementImportance = "required" | "preferred" | "bonus";
-export type RequirementType = "skill" | "experience" | "education" | "domain" | "certification";
+import type {
+  RequirementImportance,
+  RequirementType,
+  JobRequirement,
+  ExtractedRequirement,
+  StructuredJobRequirements,
+  Experience,
+  ExtractedExperience,
+  Education,
+  ExtractedEducation,
+  Skill,
+  ExtractedSkill,
+  CandidateProfile,
+} from "@/lib/domain/types";
 
-export interface ExtractedRequirement {
-  id: string;
-  name: string;
-  type: RequirementType;
-  importance: RequirementImportance;
-  minimumYears?: number;
-  description?: string;
-  extractedEvidence?: string;
-  confidence: number; // 0.0 to 1.0
-}
-
-export interface StructuredJobRequirements {
-  title: string;
-  summary?: string;
-  department?: string;
-  location?: string;
-  minimumExperienceYears: number;
-  requiredSkills: ExtractedRequirement[];
-  preferredSkills: ExtractedRequirement[];
-  educationRequirements: ExtractedRequirement[];
-  responsibilities: string[];
-  certifications: ExtractedRequirement[];
-  domainKnowledge: string[];
-  rawTextExcerpt?: string;
-  confidence: number;
-  extractedAt: string;
-}
-
-export interface ExtractedExperience {
-  company: string;
-  title: string;
-  startDate?: string;
-  endDate?: string;
-  isCurrent?: boolean;
-  years: number;
-  description: string;
-  technologies: string[];
-  evidenceSnippet?: string;
-}
-
-export interface ExtractedEducation {
-  institution: string;
-  degree: string;
-  field: string;
-  graduationYear?: number;
-}
-
-export interface ExtractedSkill {
-  name: string;
-  canonicalName?: string;
-  category?: "language" | "framework" | "database" | "tool" | "cloud" | "methodology" | "other";
-  level?: "Basic" | "Working knowledge" | "Strong" | "Expert";
-  yearsOfExperience?: number;
-  evidenceSnippet?: string;
-}
-
-export interface CandidateProfile {
-  id?: string;
-  name: string;
-  email?: string;
-  phone?: string;
-  location?: string;
-  summary?: string;
-  totalExperienceYears: number;
-  skills: ExtractedSkill[];
-  experience: ExtractedExperience[];
-  education: ExtractedEducation[];
-  projects?: Array<{
-    name: string;
-    description: string;
-    technologies: string[];
-  }>;
-  certifications?: Array<{
-    name: string;
-    issuer: string;
-    year?: number;
-  }>;
-  rawTextExcerpt?: string;
-  confidence: number;
-  extractedAt: string;
-}
+export type {
+  RequirementImportance,
+  RequirementType,
+  JobRequirement,
+  ExtractedRequirement,
+  StructuredJobRequirements,
+  Experience,
+  ExtractedExperience,
+  Education,
+  ExtractedEducation,
+  Skill,
+  ExtractedSkill,
+  CandidateProfile,
+};
 
 /**
  * Validates and sanitizes raw AI response into StructuredJobRequirements

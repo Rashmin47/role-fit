@@ -2,7 +2,7 @@
 
 > Three representations of the same domain coexist today: **AI extraction contracts**, **presentation types**, and the **Prisma persistence schema**. This document explains each, how they map, and how to migrate safely.
 
-Last verified: 2026-10-19.
+Last verified: 2026-11-05.
 
 ---
 
@@ -10,20 +10,20 @@ Last verified: 2026-10-19.
 
 | Representation | Location | Purpose | Validated? | Persisted? |
 | --- | --- | --- | --- | --- |
-| **AI contracts** | `lib/ai/schemas.ts` | Boundary between unstructured text and typed facts | Job output: yes. Candidate output: **no** (gap) | No |
-| **Presentation/domain types** | `types/index.ts` | UI props, sample data, store, legacy engine API | TypeScript only | `localStorage` (screenings) |
-| **Relational schema** | `prisma/schema.prisma` | Target database model | Prisma types after generation | SQLite locally; not used by app yet |
+| **AI contracts** | `lib/ai/schemas.ts` | Boundary between unstructured text and typed facts | Job output: yes. Candidate output: yes, with repair/reject + warnings | Not directly; validated profiles are embedded in `Candidate.profileJson` |
+| **Presentation/domain types** | `types/index.ts` | UI props, sample data, store, engine API | TypeScript only | Projection of Prisma rows |
+| **Relational schema** | `prisma/schema.prisma` | Database model | Prisma types after generation | SQLite locally; source of truth for screenings and settings |
 
-### Why this is intentional (for now)
+### Why this still exists
 
-The UI and deterministic engine were built first to validate the product thesis. Persistence was designed but not wired. A big-bang unification would have mixed a risky UI rewrite with a risky data migration.
+The UI and deterministic engine were built first to validate the product thesis. Persistence now exists, but the two type systems have not been unified: the repository maps validated AI contracts into `Job`/`Requirement`/`CandidateMatch` rows and back into presentation shapes. A big-bang unification would mix a risky UI rewrite with a data migration.
 
-### Why it must be fixed
+### Why it must still be fixed
 
 - Two shapes drift (e.g. `JobRequirement` vs `ExtractedRequirement`).
-- Conversion code lives in UI and batch layers (`NewScreeningWorkflow`, `lib/batch`).
-- Validation exists for jobs but not candidates.
-- Prisma cannot be the source of truth until the app reads/writes it.
+- Conversion code lives in the API/repository and batch layers.
+- Candidate facts are stored twice: normalized rows (`CandidateSkill`, `CandidateExperience`) and JSON snapshots (`extracted*Json`, `profileJson`).
+- There is no server action layer or organization scoping yet.
 
 Phase 1/2 of the roadmap consolidates this. Do not add a fourth shape in the meantime.
 
@@ -89,7 +89,15 @@ Phase 1/2 of the roadmap consolidates this. Do not add a fourth shape in the mea
 - generates IDs from names when missing,
 - reports `"No technical requirements extracted from text"` when both required and preferred are empty.
 
-**Gap:** there is no `validateCandidateProfileOutput()`. Ollama candidate output is trusted structurally and only falls back on fetch/parse errors. Add validation before wiring real ingestion.
+`validateCandidateProfileOutput(raw, nameHint)`:
+
+- rejects non-objects and missing/blank names,
+- coerces arrays and drops malformed entries,
+- clamps confidence and refuses negative years,
+- repairs common shape drift instead of trusting the provider,
+- returns structured warnings for every repair/rejection.
+
+Both AI outputs are validated in `lib/ai/server-extraction.ts` before they can reach the engine. The screening route re-validates candidate profiles again through `validateCreateScreeningInput()` so a direct API caller cannot bypass the boundary.
 
 ---
 
@@ -131,21 +139,41 @@ Used by the UI, sample data, and the legacy scoring API.
 }
 ```
 
-`reviewNotes` and `reviewedAt` are persisted in `localStorage` today and should map to `CandidateMatch.reviewNotes` / `updatedAt` later. `extractionConfidence` and `extractionWarnings` are presentation/audit metadata; they can live in `CandidateMatch.matchesJson` or dedicated columns when persistence lands.
+`reviewNotes` and `reviewedAt` map to `CandidateMatch.reviewNotes` / `reviewedAt`. `extractionConfidence` and `extractionWarnings` are stored on `CandidateMatch` as dedicated columns/JSON. `matches`, `gaps`, and `scoringWeights` are stored as JSON so every score remains explainable.
 
 ---
 
-## 4. Current client persistence
+## 4. Persisted screenings
 
-File: `lib/store/screening-store.ts`.
+The source of truth is Prisma. The browser store is a cache, not a persistence layer.
 
-- Storage key: `rolefit_screenings_state_v1`.
-- Legacy key read as fallback: `nirman_screenings_state_v1`.
-- Value: `JobScreening[]` serialized as JSON.
-- Store implementation: module-level snapshot + listeners + `useSyncExternalStore`.
-- Cross-tab sync: `storage` event.
-- Server snapshot: `SAMPLE_SCREENINGS` (deterministic hydration).
-- Writes: decisions, notes, new screenings, weight recomputation.
+### Write path
+
+`POST /api/screenings` (see `app/api/screenings/route.ts`):
+
+1. `validateCreateScreeningInput()` re-validates the job requirements and every candidate profile.
+2. `lib/db/screenings.ts` prefixes requirement IDs with the screening ID, runs `scoreCandidateProfile()` deterministically, and rejects the request if no candidate can be scored.
+3. One transaction writes `Job`, `Requirement[]`, `Candidate[]`, `CandidateSkill[]`, `CandidateExperience[]`, `CandidateMatch[]`, and one `ScoringRun`.
+4. `Candidate.profileJson` stores the validated `CandidateProfile` used for future weight recomputation.
+5. `failed[]` entries (candidate-level scoring failures) are returned to the UI and also persisted in `Job.processingNotesJson`.
+
+### Read path
+
+`GET /api/screenings` and `GET /api/screenings/[jobId]` map rows back to the presentation `JobScreening` shape:
+
+```text
+Job
+  + Requirements ordered by orderIndex
+  + CandidateMatch[] joined to Candidate, ordered by totalScore
+  + latest ScoringRun
+  + counts derived from decisions
+```
+
+### Updates
+
+- `PATCH /api/screenings/[jobId]/candidates/[candidateId]` updates the decision, notes, and `reviewedAt`.
+- `PATCH /api/screenings/[jobId]` re-scores from stored `profileJson` with new weights, writes a new `ScoringRun`, and preserves decisions/notes.
+- The client store applies optimistic decisions and rolls back if the server rejects the write.
 
 ### Shape
 
@@ -163,20 +191,16 @@ JobScreening {
 
 ### Ingestion boundary
 
-Uploaded PDF/DOCX/TXT/MD files are parsed by `app/api/ingest/route.ts` and are **not** written to `localStorage` or the database. The request holds file bytes in memory, returns extracted text, and the wizard screens that text. Only the resulting score evidence (short snippets), processing notes, and decisions are persisted in the browser store. There is no `Resume` row yet and no raw document retention.
+Uploaded PDF/DOCX/TXT/MD files are parsed by `app/api/ingest/route.ts` and are **not** written to disk or the database. The request holds file bytes in memory and returns extracted text. The wizard sends that text to `app/api/extract/candidate/route.ts`; the server calls the configured provider, validates the result, and returns structured data plus warnings. Extracted profiles and short evidence snippets are persisted through `/api/screenings`. Raw documents are not.
 
 ### Constraints
 
-- Data is per-browser. It does not sync across devices.
-- There is no migration/versioning beyond the key suffix.
-- Clearing site data destroys screenings and decisions.
-- No PII protections. Do not store real candidate data here.
-- `candidateCount` must equal `candidates.length` for consistency (the sample fixture was corrected in v0.2).
+- No authentication or organization scoping; all screenings attach to the seeded demo organization when present.
+- No duplicate detection or multi-resume merge.
+- Data is unencrypted SQLite locally. Do not store real candidate data without a privacy review.
+- `candidateCount` is derived from `CandidateMatch` rows.
 - Sample screenings must keep `isSample: true` so the UI can label them.
-
-### Versioning rule
-
-If the persisted shape changes, bump the key to `..._v2` and implement a read-time migration from `v1`. Never silently parse an incompatible shape. Keep the legacy `nirman_` key read for one release.
+- If the database is not initialized, routes return `503 database_not_initialized` with setup instructions.
 
 ---
 
@@ -224,6 +248,7 @@ ScoringRun 1 ── * CandidateProcessingJob
 JobPosting 1 ── * EvidenceSource
 
 Skill 1 ── * SkillAlias
+WorkspaceSettings (single row, id = "default")
 Company (standalone aggregate)
 MarketRoleData (standalone aggregate)
 ```
@@ -234,15 +259,16 @@ MarketRoleData (standalone aggregate)
 | --- | --- | --- |
 | `Organization` | `id`, `name`, `slug @unique` | Tenant boundary (not enforced yet) |
 | `User` | `id`, `email @unique`, `role`, `organizationId?` | `role` is a string, not an enum |
-| `Job` | `title`, `department`, `location`, `status`, `rawDescription`, `minimumExperienceYears`, `organizationId?` | One screening workspace |
-| `Requirement` | `jobId`, `name`, `type`, `importance`, `weight`, `minimumYears?`, `confidence`, `extractedEvidence?` | Structured requirements |
-| `Candidate` | `name`, `email?`, `phone?`, `location?`, `headline?`, `totalExperienceYears`, `rawResumeText?`, `extracted*Json` | JSON columns hold extraction snapshots |
-| `Resume` | `candidateId`, `filename`, `fileSize`, `mimeType`, `rawText`, `parsedAt` | One row per uploaded document |
+| `Job` | `title`, `department`, `location`, `status`, `rawDescription`, `minimumExperienceYears`, `summary?`, `responsibilitiesJson`, `domainKnowledgeJson`, `certificationsJson`, `processingNotesJson`, `isSample`, `extractionConfidence?`, `extractedAt?`, `organizationId?` | One screening workspace |
+| `Requirement` | `jobId`, `name`, `type`, `importance`, `weight`, `minimumYears?`, `confidence`, `extractedEvidence?`, `orderIndex` | Structured requirements; `orderIndex` preserves source order |
+| `Candidate` | `name`, `email?`, `phone?`, `location?`, `headline?`, `summary?`, `totalExperienceYears`, `rawResumeText?`, `extracted*Json`, `profileJson?` | JSON columns hold extraction snapshots; `profileJson` powers deterministic recompute |
+| `Resume` | `candidateId`, `filename`, `fileSize`, `mimeType`, `rawText`, `parsedAt` | Reserved; uploads are not persisted yet |
 | `CandidateSkill` | `candidateId`, `skillName`, `level?`, `years?`, `evidence?` | Normalized skill rows |
 | `CandidateExperience` | `candidateId`, `company`, `title`, dates, `years`, `description?` | No technologies column yet; stored in JSON |
-| `CandidateMatch` | `jobId`, `candidateId`, component scores, `status`, `decision`, `matchesJson`, `gapsJson`, `weightsJson`, `reviewNotes?` | `@@unique([jobId, candidateId])` |
-| `ScoringRun` | `jobId`, `executedAt`, `candidatesCount`, `status`, `weightsJson` | One row per batch run |
-| `CandidateProcessingJob` | `scoringRunId`, `candidateName`, `status`, `score?`, `routingState?`, `errorMessage?`, timestamps | Per-candidate progress/retry unit |
+| `CandidateMatch` | `jobId`, `candidateId`, component scores, `max*Score`, experience years, `status`, `decision`, `matchesJson`, `gapsJson`, `weightsJson`, `extractionConfidence?`, `extractionWarningsJson?`, `reviewNotes?`, `reviewedAt?` | `@@unique([jobId, candidateId])` |
+| `ScoringRun` | `jobId`, `executedAt`, `candidatesCount`, `status`, `weightsJson` | One row per create or weight recompute |
+| `CandidateProcessingJob` | `scoringRunId`, `candidateIndex`, `candidateName`, `sourceName`, `candidateId?`, `status`, `score?`, `routingState?`, `providerName?`, `fallbackUsed`, `warningsJson?`, `attempts`, `errorMessage?`, timestamps | Durable per-candidate batch progress and outcomes; raw source text is not stored here |
+| `WorkspaceSettings` | `id = "default"`, `provider`, `ollamaBaseUrl`, `ollamaModel`, four weight ints | Single-row runtime configuration; env is fallback |
 | `Skill` | `name @unique`, `category` | Canonical taxonomy |
 | `SkillAlias` | `skillId`, `alias @unique` | Lookup table for normalization |
 | `JobPosting` | `companyName`, `roleTitle`, `sourceName`, `observedDate`, `extractedSkillsJson`, `minimumExperienceYears`, `descriptionExcerpt` | Market evidence source |
@@ -254,10 +280,10 @@ MarketRoleData (standalone aggregate)
 
 - **JSON columns** (`*Json`) are deliberate for evolving extraction payloads. Normalize them into tables only when querying/reporting requires it.
 - **`CandidateMatch`** is the durable unit of a screening result. It has the unique `(jobId, candidateId)` constraint needed for idempotent re-runs.
-- **`ScoringRun` + `CandidateProcessingJob`** model a batch run and per-candidate failure isolation.
-- **`Requirement.type`/`importance`** are strings, not enums. This keeps migrations cheap but weakens integrity. Converting to Prisma enums is a Phase 2 decision.
-- **No `AuditLog` model yet.** Add one before production (who changed a decision, when, why).
-- **No `Settings`/`ScoringProfile` model yet.** Global weights/provider settings need persistence.
+- **`ScoringRun` + `CandidateProcessingJob`** now drive wizard batch processing. Runs include provider/model, weights, completion time and success/failure counts; per-candidate rows store progress, attempts and extraction fallback metadata. Candidate facts, matches and successful job status commit together. Weight recomputes still create a separate run. No durable worker/resume or cross-request deduplication is implemented.
+- **`Requirement.type`/`importance`** are strings, not enums. This keeps migrations cheap but weakens integrity. Converting to Prisma enums is a future decision.
+- **`WorkspaceSettings`** is global, not per-user or per-organization. Add a scope key before real multi-tenant use.
+- **No `AuditLog` model yet.** `ScoringRun` preserves weight history, but decision changes are not individually audited. Add an audit log before production (who changed a decision, when, why).
 - **`User.role`** is a free string; RBAC is not implemented.
 
 ### 5.5 Seed
@@ -265,15 +291,16 @@ MarketRoleData (standalone aggregate)
 `prisma/seed.ts` (run by `prisma db seed` via `prisma.config.ts`):
 
 - upserts organization `Apex Engineering` (`slug: "apex-engineering"`),
-- upserts demo user `rashmin@rolefit.app` with role `lead_recruiter`.
+- upserts demo user `rashmin@rolefit.app` with role `lead_recruiter`,
+- upserts the default `WorkspaceSettings` row from `AI_PROVIDER` / `OLLAMA_*` with 50/25/15/10 weights.
 
-It does **not** seed jobs/candidates/market data yet. The UI uses `lib/data/sample-data.ts` instead. Phase 2 should seed the same fixtures into Prisma so the UI can switch sources without changing its shape.
+It does **not** seed jobs/candidates/market data. The UI uses `lib/data/sample-data.ts` for market data and the wizard’s bundled fictional resumes for sample screenings. Seeding those fixtures into Prisma remains a future step.
 
 ---
 
-## 6. Mapping plan: presentation → relational
+## 6. Mapping: presentation ↔ relational
 
-When wiring persistence, these are the intended mappings.
+These are the mappings implemented by `lib/db/screenings.ts`.
 
 ### `JobRequirements` → `Job` + `Requirement[]`
 
@@ -284,7 +311,9 @@ When wiring persistence, these are the intended mappings.
 | `minimumExperienceYears` | `Job.minimumExperienceYears` |
 | `requiredSkills[]` | `Requirement { importance: "required", type: "skill" }` |
 | `preferredSkills[]` | `Requirement { importance: "preferred", type: "skill" }` |
-| `responsibilities[]` | Not modeled; add `responsibilitiesJson` or a `Responsibility` table |
+| `responsibilities[]` | `Job.responsibilitiesJson` |
+| `domainKnowledge[]`, `certifications[]` | `Job.domainKnowledgeJson`, `Job.certificationsJson` |
+| `summary`, `confidence`, `extractedAt` | `Job.summary`, `Job.extractionConfidence`, `Job.extractedAt` |
 
 ### `CandidateExtraction` / `CandidateProfile` → `Candidate` + children
 
@@ -304,14 +333,15 @@ When wiring persistence, these are the intended mappings.
 | --- | --- |
 | `candidateId`, `jobId` | `CandidateMatch.candidateId/jobId` |
 | `totalScore`, `skillScore`, `experienceScore`, `preferredScore`, `evidenceScore` | same-named columns |
-| `max*Score` | Derivable from weights; not stored |
+| `max*Score` | Stored for audit: `CandidateMatch.max*` |
 | `status` | `CandidateMatch.status` |
 | `decision` | `CandidateMatch.decision` |
 | `matches` | `matchesJson` |
 | `gaps` | `gapsJson` |
 | `scoringWeights` | `weightsJson` (and `ScoringRun.weightsJson`) |
 | `reviewNotes` | `reviewNotes` |
-| `reviewedAt` | `updatedAt` or a dedicated audit field |
+| `reviewedAt` | Dedicated `reviewedAt` |
+| `extractionConfidence`, `extractionWarnings` | `extractionConfidence`, `extractionWarningsJson` |
 
 ### `JobScreening` → aggregate
 
@@ -328,10 +358,11 @@ Additional projection fields:
 
 | Presentation | Relational |
 | --- | --- |
-| `isSample` | `ScoringRun.source = "sample"` (or an equivalent provenance field) |
-| `processingNotes` | `ScoringRun.errorSummary` / `CandidateProcessingJob.lastError` + `Resume` parsing status |
-| `extractionConfidence` | `CandidateMatch.confidence` or `matchesJson` |
-| `extractionWarnings` | `CandidateMatch.matchesJson` / audit log |
+| `isSample` | `Job.isSample` |
+| `processingNotes` | `Job.processingNotesJson` |
+| `status` | `Job.status` |
+| `createdAt` | `Job.createdAt` |
+| counts | Derived from `CandidateMatch.decision` |
 
 ### Market types → aggregate tables
 
@@ -346,17 +377,24 @@ Additional projection fields:
 
 ---
 
-## 7. Migration sequence (recommended)
+## 7. Migration status
 
-1. **Add a server-only repository layer** (`lib/db/`) exposing domain operations, not raw Prisma types.
-2. **Seed Prisma** with the same sample roles/screenings/candidates (or a subset) so both sources can be compared.
-3. **Introduce a data-source flag** (e.g. `SCREENING_SOURCE=local|database`) or migrate one route at a time, starting with recruitment list/detail.
-4. **Read from DB in server components**, pass serializable view models to client islands. Do not import Prisma into client components.
-5. **Write decisions through a server action** with organization scoping + audit entry.
-6. **Migrate `localStorage` data** with an explicit import action (opt-in), then bump/retire the key.
-7. **Remove the client fallback** once DB reads are authoritative.
+Shipped:
 
-Acceptance criteria: reloading on another browser shows the same screening and decisions; no decision exists only in `localStorage`; every mutation is attributable to a user.
+1. **Server-only repository layer** (`lib/db/`) exposing domain operations, not raw Prisma types.
+2. **Prisma is authoritative** for screenings, matches, scoring runs, decisions, and settings.
+3. **The client store reads and writes through `/api/screenings`;** `localStorage` is no longer used.
+4. **Decisions and weight recomputes persist** and survive reloads/restarts.
+
+Still required:
+
+1. **Organization scoping** on every repository query and mutation.
+2. **Server actions** or a typed mutation layer for decisions, with an audit entry per change.
+3. **Extraction history**: persist provider/model/version per extraction so audit-grade reproducibility does not depend on re-reading the source.
+4. **Seed parity**: seed sample roles/screenings/candidates into Prisma so the UI can stop importing fixtures directly.
+5. **Optional import** of legacy `localStorage` data, then retire the key permanently.
+
+Acceptance criteria: reloading in another browser shows the same screening and decisions; no decision exists only in the browser; every mutation is attributable to a user.
 
 ---
 
@@ -394,11 +432,11 @@ Any data shown as market evidence must be traceable to a `JobPosting` + `Evidenc
 
 ## 9. Privacy and compliance notes
 
-- Raw resume text is sensitive. Define retention, encryption, and deletion before production.
+- Raw resume text is sensitive. The app currently stores only `rawTextExcerpt`/`profileJson` evidence, but that is still candidate PII. Define retention, encryption, and deletion before production.
 - Do not log resume text or full candidate objects.
 - Organization scoping must be enforced on every query, not just in the UI.
-- An audit trail should capture: extraction run, model/provider, score weights, human decision, reviewer identity, timestamp.
-- Candidate deletion must cascade through resumes, skills, experiences, and matches (`onDelete: Cascade` is already set for most relations).
+- An audit trail should capture: extraction run, model/provider, score weights, human decision, reviewer identity, timestamp. `ScoringRun` covers weights; the rest is not stored yet.
+- Candidate deletion must cascade through skills, experiences, and matches (`onDelete: Cascade` is already set for most relations). `Candidate.profileJson` must be deleted with the candidate.
 
 ---
 

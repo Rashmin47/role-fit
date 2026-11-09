@@ -29,20 +29,28 @@ model User {
 }
 
 model Job {
-  id                     String           @id @default(cuid())
-  title                  String
-  department             String
-  location               String
-  status                 String           @default("active") // active, draft, archived
-  rawDescription         String
-  minimumExperienceYears Float            @default(0)
-  organizationId         String?
-  organization           Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  requirements           Requirement[]
-  candidateMatches       CandidateMatch[]
-  scoringRuns            ScoringRun[]
-  createdAt              DateTime         @default(now())
-  updatedAt              DateTime         @updatedAt
+  id                      String           @id @default(cuid())
+  title                   String
+  department              String
+  location                String
+  status                  String           @default("active") // ready, draft, extracting, completed
+  rawDescription          String
+  minimumExperienceYears  Float            @default(0)
+  summary                 String?
+  responsibilitiesJson    String?
+  domainKnowledgeJson     String?
+  certificationsJson      String?
+  processingNotesJson     String?
+  isSample                Boolean          @default(false)
+  extractionConfidence    Float?
+  extractedAt             DateTime?
+  organizationId          String?
+  organization            Organization?    @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  requirements            Requirement[]
+  candidateMatches        CandidateMatch[]
+  scoringRuns             ScoringRun[]
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
 }
 
 model Requirement {
@@ -57,6 +65,7 @@ model Requirement {
   description       String?
   extractedEvidence String?
   confidence        Float    @default(0.95)
+  orderIndex        Int      @default(0)
   createdAt         DateTime @default(now())
 }
 
@@ -67,11 +76,13 @@ model Candidate {
   phone                  String?
   location               String?
   headline               String?
+  summary                String?
   totalExperienceYears   Float            @default(0)
   rawResumeText          String?
   extractedSkillsJson    String?          // JSON array of normalized skills
   extractedWorkJson      String?          // JSON array of structured experience
   extractedEducationJson String?          // JSON array of education
+  profileJson            String?          // Validated CandidateProfile used for deterministic recompute
   resumes                Resume[]
   candidateSkills        CandidateSkill[]
   candidateExperiences   CandidateExperience[]
@@ -117,27 +128,36 @@ model CandidateExperience {
 }
 
 model CandidateMatch {
-  id                   String      @id @default(cuid())
-  jobId                String
-  job                  Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  candidateId          String
-  candidate            Candidate   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  scoringRunId         String?
-  scoringRun           ScoringRun? @relation(fields: [scoringRunId], references: [id], onDelete: SetNull)
-  totalScore           Float
-  skillScore           Float
-  experienceScore      Float
-  preferredScore       Float
-  evidenceScore        Float
-  status               String      @default("Review") // Strong Match, Review, Needs Verification
-  decision             String      @default("pending") // pending, shortlisted, held, not_recommended
-  matchesJson          String      // JSON array of MatchEvidence
-  gapsJson             String      // JSON array of SkillGap
-  weightsJson          String      // JSON of ScoringWeights
-  reviewedBy           String?
-  reviewNotes          String?
-  createdAt            DateTime    @default(now())
-  updatedAt            DateTime    @updatedAt
+  id                        String      @id @default(cuid())
+  jobId                     String
+  job                       Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidateId               String
+  candidate                 Candidate   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  scoringRunId              String?
+  scoringRun                ScoringRun? @relation(fields: [scoringRunId], references: [id], onDelete: SetNull)
+  totalScore                Float
+  skillScore                Float
+  maxSkillScore             Float       @default(0)
+  experienceScore           Float
+  maxExperienceScore        Float       @default(0)
+  preferredScore            Float
+  maxPreferredScore         Float       @default(0)
+  evidenceScore             Float
+  maxEvidenceScore          Float       @default(0)
+  calculatedExperienceYears Float       @default(0)
+  requiredExperienceYears   Float       @default(0)
+  status                    String      @default("Review") // Strong Match, Review, Needs Verification
+  decision                  String      @default("pending") // pending, shortlisted, held, not_recommended
+  matchesJson               String      // JSON array of MatchEvidence
+  gapsJson                  String      // JSON array of SkillGap
+  weightsJson               String      // JSON of ScoringWeights
+  extractionConfidence      Float?
+  extractionWarningsJson    String?
+  reviewedBy                String?
+  reviewNotes               String?
+  reviewedAt                DateTime?
+  createdAt                 DateTime    @default(now())
+  updatedAt                 DateTime    @updatedAt
 
   @@unique([jobId, candidateId])
 }
@@ -147,8 +167,13 @@ model ScoringRun {
   jobId            String
   job              Job              @relation(fields: [jobId], references: [id], onDelete: Cascade)
   executedAt       DateTime         @default(now())
+  completedAt      DateTime?
   candidatesCount  Int
+  successCount     Int              @default(0)
+  failureCount     Int              @default(0)
   status           String           @default("COMPLETED") // QUEUED, PROCESSING, COMPLETED, FAILED
+  provider         String?
+  model            String?
   weightsJson      String
   candidateMatches CandidateMatch[]
   processingJobs   CandidateProcessingJob[]
@@ -158,10 +183,17 @@ model CandidateProcessingJob {
   id            String     @id @default(cuid())
   scoringRunId  String
   scoringRun    ScoringRun @relation(fields: [scoringRunId], references: [id], onDelete: Cascade)
+  candidateIndex Int       @default(0)
   candidateName String
+  sourceName    String?
+  candidateId   String?
   status        String     @default("QUEUED") // QUEUED, PROCESSING, COMPLETED, FAILED
   score         Float?
   routingState  String?
+  providerName  String?
+  fallbackUsed  Boolean    @default(false)
+  warningsJson  String?
+  attempts      Int        @default(0)
   errorMessage  String?
   startedAt     DateTime?
   completedAt   DateTime?
@@ -222,4 +254,17 @@ model Company {
   industry         String
   observedDataJson String   // JSON array of ObservedCompanyRequirement
   createdAt        DateTime @default(now())
+}
+
+model WorkspaceSettings {
+  id                     String   @id @default("default")
+  provider               String   @default("mock") // mock | ollama
+  ollamaBaseUrl          String   @default("http://localhost:11434")
+  ollamaModel            String   @default("llama3.2")
+  requiredSkillsWeight   Int      @default(50)
+  experienceWeight       Int      @default(25)
+  preferredSkillsWeight  Int      @default(15)
+  evidenceQualityWeight  Int      @default(10)
+  updatedAt              DateTime @updatedAt
+  createdAt              DateTime @default(now())
 }

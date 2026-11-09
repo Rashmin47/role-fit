@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Callout } from "@/components/ui/Callout";
 import { Progress } from "@/components/ui/Input";
 import { useScreeningStore } from "@/lib/store/screening-store";
 
@@ -19,7 +20,7 @@ const STATUS_META = {
 };
 
 export default function RecruitmentWorkspacePage() {
-  const { screenings } = useScreeningStore();
+  const { screenings, isLoading, error } = useScreeningStore();
 
   return (
     <div className="space-y-6">
@@ -34,7 +35,17 @@ export default function RecruitmentWorkspacePage() {
         }
       />
 
-      {screenings.length === 0 ? (
+      {error && (
+        <Callout tone="danger" title="Could not load screenings">
+          {error}
+        </Callout>
+      )}
+
+      {isLoading ? (
+        <Card className="p-10 text-center text-[13px] text-nirman-text-secondary">
+          Loading persisted screenings…
+        </Card>
+      ) : screenings.length === 0 ? (
         <EmptyState
           title="No screenings yet"
           description="Create your first screening to extract requirements and score candidates against them."

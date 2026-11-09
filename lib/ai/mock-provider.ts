@@ -4,11 +4,16 @@ import {
   validateJobRequirementsOutput,
   validateCandidateProfileOutput,
 } from "./schemas";
+import type { AIProviderRunInfo } from "./provider";
 import { normalizeSkillName } from "../normalization/skills";
 import { extractCandidateHeuristics } from "./resume-heuristics";
 
 export class MockAIProvider {
   name = "Local Rule & Pattern Extractor (Offline)";
+
+  getLastRunInfo(): AIProviderRunInfo {
+    return { provider: this.name, fallbackUsed: false };
+  }
 
   async extractJobRequirements(
     jobTitle: string,

@@ -33,6 +33,28 @@ async function main() {
     },
   });
 
+  // Persist the workspace's extraction and scoring defaults. Environment
+  // variables are the bootstrap values; the database is the runtime source.
+  const provider =
+    (process.env.AI_PROVIDER ?? "mock").toLowerCase() === "ollama"
+      ? "ollama"
+      : "mock";
+
+  await prisma.workspaceSettings.upsert({
+    where: { id: "default" },
+    update: {},
+    create: {
+      id: "default",
+      provider,
+      ollamaBaseUrl: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434",
+      ollamaModel: process.env.OLLAMA_MODEL ?? "llama3.2",
+      requiredSkillsWeight: 50,
+      experienceWeight: 25,
+      preferredSkillsWeight: 15,
+      evidenceQualityWeight: 10,
+    },
+  });
+
   console.log("✅ Seed completed successfully.");
 }
 
